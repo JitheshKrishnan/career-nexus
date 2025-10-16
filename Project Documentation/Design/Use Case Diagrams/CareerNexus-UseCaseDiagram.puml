@@ -1,0 +1,257 @@
+@startuml Career Nexus
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+  FontStyle plain
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Note Styling ======
+skinparam note {
+  BackgroundColor #2d343e
+  BorderColor #00ffaa
+  FontColor #cdd9e5
+  FontStyle italic
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<JobSeeker>> {
+  BackgroundColor #003366
+  BorderColor #0099ff
+}
+skinparam actor<<Recruiter>> {
+  BackgroundColor #004d26
+  BorderColor #00cc66
+}
+skinparam actor<<Admin>> {
+  BackgroundColor #661a1a
+  BorderColor #ff3333
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "User" as U
+actor "Job Seeker" as JS <<JobSeeker>>
+actor "Recruiter" as R <<Recruiter>>
+actor "Admin" as A <<Admin>>
+
+JS --|> U
+R --|> U
+A --|> U
+
+rectangle "Career Nexus System" {
+    
+    ' ========== Common Use Cases ==========
+    package "Authentication & Profile" #18222f {
+        usecase "Register" as UC1
+        usecase "Login" as UC2
+        usecase "Update Profile" as UC3
+        usecase "Logout" as UC4
+        usecase "Change Password" as UC29
+    }
+
+    ' ========== Notification Management ==========
+    package "Notification Management" #22303d {
+        usecase "View Notifications" as UC28
+        usecase "Manage Notification Preferences" as UC33
+        usecase "Send Email Notification" as UC34
+    }
+    
+    ' ========== Job Seeker Use Cases ==========
+    package "Resume Management" #1d2733 {
+        usecase "Upload Resume" as UC5
+        usecase "Parse Resume" as UC6
+        usecase "Download Resume" as UC30
+    }
+    
+    package "Job Search & Application" #232f3d {
+        usecase "View Job Listings" as UC7
+        usecase "Search Jobs" as UC7a
+        usecase "Apply to Job" as UC8
+        usecase "View Application Status" as UC21
+        usecase "Withdraw Application" as UC22
+        usecase "Save Job (Bookmark)" as UC23
+    }
+    
+    package "Recommendations" #283749 {
+        usecase "Get Job Recommendations" as UC9
+        usecase "Get Learning Suggestions" as UC10
+    }
+    
+    ' ========== Recruiter Use Cases ==========
+    package "Job Management" #1b2632 {
+        usecase "Post Job" as UC11
+        usecase "Edit Job" as UC12
+        usecase "Delete Job" as UC13
+        usecase "Manage Job Listings" as UC15
+    }
+    
+    package "Candidate Management" #222f3d {
+        usecase "View Applicants" as UC14
+        usecase "Search Candidates" as UC25
+        usecase "Shortlist Candidates" as UC26
+        usecase "Schedule Interview" as UC27
+    }
+    
+    ' ========== Admin Use Cases ==========
+    package "Administration" #18222f {
+        usecase "Manage Users" as UC16
+        usecase "Manage Recruiters" as UC17
+        usecase "Manage Jobs" as UC18
+        usecase "Monitor System Health" as UC19
+        usecase "Generate Reports" as UC20
+        usecase "View Audit Logs" as UC32
+        usecase "Manage System Config" as UC31
+    }
+}
+
+' ========== User (Base) Associations ==========
+U --> UC1
+U --> UC2
+U --> UC3
+U --> UC4
+U --> UC29
+U --> UC28
+U --> UC33
+
+' ========== Job Seeker Associations ==========
+JS --> UC5
+JS --> UC6
+JS --> UC7
+JS --> UC7a
+JS --> UC8
+JS --> UC21
+JS --> UC22
+JS --> UC23
+JS --> UC9
+JS --> UC10
+JS --> UC30
+
+' ========== Recruiter Associations ==========
+R --> UC11
+R --> UC12
+R --> UC13
+R --> UC14
+R --> UC15
+R --> UC25
+R --> UC26
+R --> UC27
+
+' ========== Admin Associations ==========
+A --> UC16
+A --> UC17
+A --> UC18
+A --> UC19
+A --> UC20
+A --> UC32
+A --> UC31
+
+' ========== Relationships Between Use Cases ==========
+' Include (mandatory sub-functionality)
+UC5 ..> UC6 : <<include>>
+UC9 ..> UC6 : <<include>>
+UC10 ..> UC9 : <<include>>
+UC8 ..> UC7 : <<include>>
+UC7 ..> UC7a : <<include>>
+UC15 ..> UC11 : <<include>>
+UC15 ..> UC12 : <<include>>
+UC15 ..> UC13 : <<include>>
+UC16 ..> UC17 : <<include>>
+UC19 ..> UC32 : <<include>>
+UC8 ..> UC34 : <<include>>
+UC26 ..> UC34 : <<include>>
+UC27 ..> UC34 : <<include>>
+UC1 ..> UC34 : <<include>>
+UC9 ..> UC34 : <<include>>
+
+' Extend (optional behavior)
+UC21 ..> UC8 : <<extend>>
+UC26 ..> UC14 : <<extend>>
+UC27 ..> UC26 : <<extend>>
+UC22 ..> UC8 : <<extend>>
+
+' ====== Notes ======
+note right of UC6
+  NLP-powered parsing:
+  - Skills extraction
+  - Experience detection
+  - Education parsing
+end note
+
+note right of UC9
+  AI/ML matching algorithm
+  based on skills, experience,
+  and job requirements
+end note
+
+note bottom of UC10
+  Integrates with external
+  learning platforms
+end note
+
+note right of UC27
+  Available only for shortlisted candidates.
+  Recruiter may schedule one or more interviews.
+end note
+
+' ====== Notes ======
+note right of UC34
+  Internal module inside Notification Service.
+  Handles:
+  - Account verification emails
+  - Password resets
+  - Job alerts
+  - Interview invites
+end note
+
+@enduml

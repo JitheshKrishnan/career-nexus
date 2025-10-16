@@ -1,0 +1,315 @@
+@startuml Gateway Service
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+  FontStyle plain
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Note Styling ======
+skinparam note {
+  BackgroundColor #2d343e
+  BorderColor #00ffaa
+  FontColor #cdd9e5
+  FontStyle italic
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<client>> {
+  BackgroundColor #1a3350
+  BorderColor #3399ff
+}
+skinparam actor<<s>> {
+  BackgroundColor #4d4d00
+  BorderColor #ffff00
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "Frontend Client\n(React App)" as FRONTEND <<client>>
+actor "Mobile App" as MOBILE <<client>>
+actor "Third-party API" as API <<client>>
+actor "User Service" as US <<s>>
+actor "Resume Service" as RS <<s>>
+actor "Job Matcher Service" as JM <<s>>
+actor "Learning Suggester" as LS <<s>>
+
+rectangle "Gateway Service (API Gateway)" {
+    
+    ' ========== Request Routing ==========
+    package "Request Routing & Load Balancing" #18222f {
+        usecase "Route Request" as UC1
+        usecase "Parse Request Path" as UC1a
+        usecase "Determine Target Service" as UC1b
+        usecase "Forward to Service" as UC1c
+        usecase "Load Balance Requests" as UC2
+        usecase "Select Service Instance" as UC2a
+        usecase "Health Check Services" as UC2b
+    }
+    
+    ' ========== Authentication & Authorization ==========
+    package "Security & Auth" #1d2733 {
+        usecase "Authenticate Request" as UC3
+        usecase "Validate JWT Token" as UC3a
+        usecase "Extract User Claims" as UC3b
+        usecase "Check Token Expiry" as UC3c
+        usecase "Authorize Request" as UC4
+        usecase "Check User Permissions" as UC4a
+        usecase "Check Role-based Access" as UC4b
+        usecase "Validate API Key" as UC5
+        usecase "Handle Token Refresh" as UC6
+    }
+    
+    ' ========== Rate Limiting & Throttling ==========
+    package "Rate Limiting & Throttling" #232f3d {
+        usecase "Apply Rate Limiting" as UC7
+        usecase "Check Request Count" as UC7a
+        usecase "Track by User ID" as UC7b
+        usecase "Track by IP Address" as UC7c
+        usecase "Return 429 Too Many Requests" as UC7d
+        usecase "Apply Throttling" as UC8
+        usecase "Queue Requests" as UC8a
+    }
+    
+    ' ========== Request/Response Transformation ==========
+    package "Request/Response Processing" #283749 {
+        usecase "Transform Request" as UC9
+        usecase "Add Headers" as UC9a
+        usecase "Modify Request Body" as UC9b
+        usecase "Transform Response" as UC10
+        usecase "Aggregate Responses" as UC10a
+        usecase "Format Response" as UC10b
+        usecase "Add CORS Headers" as UC10c
+    }
+    
+    ' ========== Caching ==========
+    package "Caching Layer" #1b2632 {
+        usecase "Cache Response" as UC11
+        usecase "Check Cache" as UC11a
+        usecase "Store in Cache" as UC11b
+        usecase "Invalidate Cache" as UC12
+        usecase "Set Cache TTL" as UC13
+    }
+    
+    ' ========== Logging & Monitoring ==========
+    package "Logging & Monitoring" #222f3d {
+        usecase "Log Request" as UC14
+        usecase "Log Request Details" as UC14a
+        usecase "Log Response Time" as UC14b
+        usecase "Log Errors" as UC15
+        usecase "Track Request Metrics" as UC16
+        usecase "Send to Monitoring" as UC16a
+        usecase "Generate Request ID" as UC17
+    }
+    
+    ' ========== Error Handling ==========
+    package "Error Handling & Circuit Breaker" #18262f {
+        usecase "Handle Service Errors" as UC18
+        usecase "Return Error Response" as UC18a
+        usecase "Map Error Codes" as UC18b
+        usecase "Apply Circuit Breaker" as UC19
+        usecase "Track Failure Rate" as UC19a
+        usecase "Open Circuit" as UC19b
+        usecase "Fallback Response" as UC19c
+        usecase "Retry Failed Requests" as UC20
+    }
+    
+    ' ========== Service Discovery ==========
+    package "Service Discovery" #1e2936 {
+        usecase "Discover Services" as UC21
+        usecase "Register Service" as UC22
+        usecase "Deregister Service" as UC23
+        usecase "Update Service Health" as UC24
+    }
+}
+
+' ========== Client Associations ==========
+FRONTEND --> UC1
+FRONTEND --> UC3
+FRONTEND --> UC9
+FRONTEND --> UC10
+
+MOBILE --> UC1
+MOBILE --> UC3
+MOBILE --> UC9
+MOBILE --> UC10
+
+API --> UC1
+API --> UC5
+API --> UC7
+
+' ========== Internal Service Associations ==========
+US --> UC1c
+US --> UC22
+US --> UC23
+US --> UC24
+
+RS --> UC1c
+RS --> UC22
+RS --> UC23
+RS --> UC24
+
+JM --> UC1c
+JM --> UC22
+JM --> UC23
+JM --> UC24
+
+LS --> UC1c
+LS --> UC22
+LS --> UC23
+LS --> UC24
+
+' ========== Include Relationships ==========
+UC1 ..> UC1a : <<include>>
+UC1 ..> UC1b : <<include>>
+UC1 ..> UC1c : <<include>>
+UC1 ..> UC3 : <<include>>
+UC1 ..> UC14 : <<include>>
+UC1 ..> UC17 : <<include>>
+UC2 ..> UC2a : <<include>>
+UC2 ..> UC2b : <<include>>
+UC3 ..> UC3a : <<include>>
+UC3 ..> UC3b : <<include>>
+UC3 ..> UC3c : <<include>>
+UC4 ..> UC4a : <<include>>
+UC4 ..> UC4b : <<include>>
+UC7 ..> UC7a : <<include>>
+UC7 ..> UC7b : <<include>>
+UC9 ..> UC9a : <<include>>
+UC10 ..> UC10b : <<include>>
+UC10 ..> UC10c : <<include>>
+UC11 ..> UC11a : <<include>>
+UC11 ..> UC11b : <<include>>
+UC14 ..> UC14a : <<include>>
+UC14 ..> UC14b : <<include>>
+UC16 ..> UC16a : <<include>>
+UC18 ..> UC18a : <<include>>
+UC18 ..> UC18b : <<include>>
+UC19 ..> UC19a : <<include>>
+
+' ========== Extend Relationships ==========
+UC4 ..> UC3 : <<extend>>
+UC7c ..> UC7 : <<extend>>
+UC7d ..> UC7 : <<extend>>
+UC8 ..> UC7 : <<extend>>
+UC8a ..> UC8 : <<extend>>
+UC9b ..> UC9 : <<extend>>
+UC10a ..> UC10 : <<extend>>
+UC12 ..> UC11 : <<extend>>
+UC15 ..> UC14 : <<extend>>
+UC19b ..> UC19 : <<extend>>
+UC19c ..> UC19 : <<extend>>
+UC20 ..> UC18 : <<extend>>
+
+' ====== Notes ======
+note right of UC1
+  Single entry point for all requests
+  Routes to appropriate microservice:
+  - /api/users/** → User Service
+  - /api/resumes/** → Resume Service
+  - /api/jobs/** → Job Matcher Service
+  - /api/learning/** → Learning Suggester
+end note
+
+note right of UC3
+  JWT Token Validation:
+  - Verify signature with public key
+  - Check expiration timestamp
+  - Extract user ID, roles, permissions
+  - Cache valid tokens (5 min TTL)
+end note
+
+note right of UC7
+  Rate Limits (per user/IP):
+  - Anonymous: 10 req/min
+  - Authenticated: 100 req/min
+  - Premium: 1000 req/min
+  
+  Uses Redis for distributed counting
+end note
+
+note right of UC10a
+  Response Aggregation:
+  Combines data from multiple services
+  for complex GraphQL-like queries
+  Example: User + Resume + Matches in one call
+end note
+
+note right of UC11
+  Cache Strategy:
+  - GET requests only
+  - Public data (jobs, courses)
+  - TTL: 5-60 minutes
+  - Key: URL + query params
+  - Storage: Redis
+end note
+
+note bottom of UC19
+  Circuit Breaker Pattern:
+  - Failure threshold: 50% in 10 sec
+  - Open duration: 30 seconds
+  - Half-open: Allow 1 test request
+  
+  Prevents cascading failures
+  Returns cached/fallback response
+end note
+
+note right of UC21
+  Service Discovery (Eureka/Consul):
+  - Services register on startup
+  - Gateway queries registry
+  - Auto-detects new instances
+  - Removes unhealthy instances
+end note
+
+@enduml

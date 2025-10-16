@@ -1,0 +1,60 @@
+.idea/
+.vscode/
+*.iml
+
+# Build outputs
+target/
+build/
+out/
+
+# Docker
+*.log
+docker-compose.override.yml
+mysql_data/
+mysql/
+**/mysql_data/
+**/mysql/
+
+# Maven
+.mvn/
+.settings/
+dependency-reduced-pom.xml
+*.jar
+*.war
+*.ear
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Node (for future React frontend)
+node_modules/
+dist/
+.env.local
+.env.development
+.env.production
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Test Reports
+surefire-reports/
+test-output/
+
+# 🗂 Logs
+*.log
+logs/
+**/logs/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*.bak
+
+# Misc
+*.class
+*.project
+*.classpath

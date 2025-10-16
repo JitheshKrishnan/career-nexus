@@ -1,0 +1,244 @@
+@startuml Learning Suggester Service
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+  FontStyle plain
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Note Styling ======
+skinparam note {
+  BackgroundColor #2d343e
+  BorderColor #00ffaa
+  FontColor #cdd9e5
+  FontStyle italic
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<JobSeeker>> {
+  BackgroundColor #003366
+  BorderColor #0099ff
+}
+skinparam actor<<s>> {
+  BackgroundColor #4d4d00
+  BorderColor #ffff00
+}
+skinparam actor<<ext>> {
+  BackgroundColor #660066
+  BorderColor #cc00cc
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "Job Seeker" as JS <<JobSeeker>>
+
+rectangle "Learning Suggester Service" {
+    
+    ' ========== Skill Gap Analysis ==========
+    package "Skill Gap Identification" #18222f {
+        usecase "Analyze User Skills" as UC1
+        usecase "Get Resume Skills" as UC1a
+        usecase "Get Target Skills" as UC1b
+        usecase "Desired Role" as UC1c
+        usecase "Job Description" as UC1f
+        usecase "Prioritize Skill Gaps" as UC1d
+        usecase "Categorize Skills" as UC1e
+        usecase "Generate Match Report" as UC3a
+    }
+    
+    ' ========== Course Recommendations ==========
+    package "Course Recommendations" #1d2733 {
+        usecase "Get Course Suggestions" as UC4
+        usecase "Search Udemy Courses" as UC4a
+        usecase "Search Coursera Courses" as UC4b
+        usecase "Search YouTube Tutorials" as UC4c
+        usecase "Aggregate Course Results" as UC4d
+        usecase "Rank Courses by Relevance" as UC4e
+        usecase "Filter by Price" as UC4f
+        usecase "Filter by Duration" as UC4g
+        usecase "Filter by Rating" as UC4h
+        usecase "Get Course Details" as UC5
+        usecase "Get Course Reviews" as UC6
+        usecase "Save Course" as UC7
+        usecase "Remove Saved Course" as UC8
+        usecase "Get Saved Courses" as UC9
+    }
+    
+    ' ========== Learning Path Generation ==========
+    package "Learning Path Creation" #232f3d {
+        usecase "Generate Learning Path" as UC10
+        usecase "Analyze Skill Dependencies" as UC10a
+        usecase "Order Skills by Priority" as UC10b
+        usecase "Assign Courses to Skills" as UC10c
+        usecase "Calculate Total Duration" as UC10d
+        usecase "Create Milestones" as UC10e
+        usecase "Get Learning Path by ID" as UC11
+        usecase "Update Learning Progress" as UC12
+        usecase "Mark Course Complete" as UC12a
+        usecase "Mark Skill Acquired" as UC12b
+    }
+    
+    ' ========== Coding Practice Integration ==========
+    package "Coding Practice Recommendations" #283749 {
+        usecase "Get Practice Problems" as UC14
+        usecase "Platforms" as UC14e
+        usecase "Fetch LeetCode Problems" as UC14a
+        usecase "Fetch Codeforces Problems" as UC14b
+        usecase "Filter by Difficulty" as UC14c
+        usecase "Filter by Topic/Skill" as UC14d
+        usecase "Filters" as UC14f
+        usecase "Get User Coding Stats" as UC15
+        usecase "Fetch LeetCode Stats" as UC15a
+        usecase "Fetch Codeforces Stats" as UC15b
+        usecase "Track Problem Solving Progress" as UC16
+    }
+}
+
+' ========== Job Seeker Associations ==========
+JS --> UC4
+JS --> UC10
+JS --> UC11
+JS --> UC14
+JS --> UC15
+JS --> UC16
+
+' ========== Include Relationships ==========
+UC1 ..> UC1a : <<include>>
+UC1 ..> UC1b : <<include>>
+UC1 ..> UC1d : <<include>>
+UC1 ..> UC1e : <<include>>
+UC1 ..> UC3a : <<include>>
+UC4d ..> UC4a : <<include>>
+UC4d ..> UC4b : <<include>>
+UC4d ..> UC4c : <<include>>
+UC4 ..> UC4d : <<include>>
+UC4 ..> UC4e : <<include>>
+UC10 ..> UC10a : <<include>>
+UC10 ..> UC10b : <<include>>
+UC10 ..> UC10c : <<include>>
+UC10 ..> UC10d : <<include>>
+UC10 ..> UC1 : <<include>>
+UC14 ..> UC14e : <<include>>
+UC14 ..> UC14f : <<include>>
+UC15 ..> UC15a : <<include>>
+UC15 ..> UC15b : <<include>>
+
+' ========== Extend Relationships ==========
+UC1c ..> UC1b : <<extend>>
+UC1f ..> UC1b : <<extend>>
+UC4f ..> UC4 : <<extend>>
+UC4g ..> UC4 : <<extend>>
+UC4h ..> UC4 : <<extend>>
+UC5 ..> UC4 : <<extend>>
+UC6 ..> UC5 : <<extend>>
+UC7 ..> UC4 : <<extend>>
+UC8 ..> UC4 : <<extend>>
+UC9 ..> UC4 : <<extend>>
+UC10e ..> UC10 : <<extend>>
+UC12 ..> UC11 : <<extend>>
+UC12b ..> UC12 : <<extend>>
+UC12a ..> UC12 : <<extend>>
+UC14a ..> UC14e: <<extend>>
+UC14b ..> UC14e: <<extend>>
+UC14c ..> UC14f: <<extend>>
+UC14d ..> UC14f : <<extend>>
+
+' ====== Notes ======
+note right of UC1
+  Skill Gap Analysis:
+  1. Fetch user's current skills from resume
+  2. Fetch target job requirements
+  3. Identify missing & weak skills
+  4. Prioritize by job demand & difficulty
+end note
+
+note right of UC1d
+  Priority Score based on:
+  - Job requirement frequency (40%)
+  - Market demand (30%)
+  - Learning difficulty (20%)
+  - User career goals (10%)
+end note
+
+note right of UC4
+  Multi-source aggregation:
+  - Udemy: Paid courses with certificates
+  - Coursera: University-backed courses
+  - YouTube: Free tutorials & walkthroughs
+  Results ranked by relevance, rating, and price
+end note
+
+note right of UC10
+  Learning Path Structure:
+  1. Foundational skills (first)
+  2. Core skills (main focus)
+  3. Advanced skills (later)
+  4. Complementary skills (optional)
+  
+  Each skill has:
+  - Recommended courses
+  - Practice problems
+  - Estimated time
+  - Completion status
+end note
+
+note bottom of UC15
+  Integration with coding platforms:
+  - LeetCode: Problems solved, contest rating
+  - Codeforces: Rating, rank, solved count
+  
+  Displays on user profile
+  Used in job matching algorithm
+end note
+
+@enduml

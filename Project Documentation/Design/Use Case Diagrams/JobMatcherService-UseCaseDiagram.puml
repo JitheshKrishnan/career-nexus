@@ -1,0 +1,177 @@
+@startuml Job Matcher Service
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+  FontStyle plain
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Note Styling ======
+skinparam note {
+  BackgroundColor #2d343e
+  BorderColor #00ffaa
+  FontColor #cdd9e5
+  FontStyle italic
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<JobSeeker>> {
+  BackgroundColor #003366
+  BorderColor #0099ff
+}
+skinparam actor<<Recruiter>> {
+  BackgroundColor #004d26
+  BorderColor #00cc66
+}
+skinparam actor<<s>> {
+  BackgroundColor #4d4d00
+  BorderColor #ffff00
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "Job Seeker" as JS <<JobSeeker>>
+
+rectangle "Job Matcher Service" {
+    
+    ' ========== Job Management ==========
+    package "Job Listing Management" #18222f {
+        usecase "Get Job by ID" as UC4
+        usecase "List All Jobs" as UC5
+        usecase "Filter by Location" as UC5a
+        usecase "Filter by Experience Level" as UC5b
+        usecase "Filter by Job Type" as UC5c
+        usecase "Search Jobs by Keyword" as UC6
+        usecase "Get Similar Jobs" as UC19
+        usecase "Find Jobs by Skill" as UC19a
+    }
+    
+    ' ========== Matching Algorithm ==========
+    package "Resume-Job Matching" #1d2733 {
+        usecase "Compute Match Score" as UC7
+        usecase "Fetch Resume Skills" as UC7a
+        usecase "Fetch Job Requirements" as UC7b
+        usecase "Calculate Skills Match" as UC7c
+        usecase "Calculate Experience Match" as UC7d
+        usecase "Calculate Location Match" as UC7e
+        usecase "Apply ML Model" as UC7f
+        usecase "Generate Match Report" as UC7g
+        usecase "Get Job Recommendations" as UC8
+        usecase "Rank Jobs by Score" as UC8a
+        usecase "Filter by Min Score" as UC8b
+        usecase "Get Top N Matches" as UC8c
+        usecase "Show Matched Skills" as UC10a
+        usecase "Show Missing Skills" as UC10b
+        usecase "Show Experience Gap" as UC10c
+        usecase "Validate Eligibility" as UC11a
+    }
+}
+
+' ========== Job Seeker Associations ==========
+JS --> UC5
+
+' ========== Include Relationships ==========
+UC7 ..> UC7a : <<include>>
+UC7 ..> UC7b : <<include>>
+UC7 ..> UC7c : <<include>>
+UC7 ..> UC7g : <<include>>
+UC8 ..> UC8a : <<include>>
+UC8 ..> UC7 : <<include>>
+UC7g ..> UC10a : <<include>>
+UC7g ..> UC10b : <<include>>
+UC7g ..> UC11a : <<include>>
+
+' ========== Extend Relationships ==========
+UC4 ..> UC5 : <<extend>>
+UC5a ..> UC6 : <<extend>>
+UC5b ..> UC6 : <<extend>>
+UC5c ..> UC6 : <<extend>>
+UC6 ..> UC5 : <<extend>>
+UC7 ..> UC4 : <<extend>>
+UC7d ..> UC7 : <<extend>>
+UC7e ..> UC7 : <<extend>>
+UC7f ..> UC7 : <<extend>>
+UC8 ..> UC5 : <<extend>>
+UC8b ..> UC8 : <<extend>>
+UC8c ..> UC8 : <<extend>>
+UC10c ..> UC7g : <<extend>>
+UC19a ..> UC6 : <<extend>>
+UC19 ..> UC4 : <<extend>>
+
+' ====== Notes ======
+note right of UC7
+  Match Score Formula (0-100):
+  - Skills match: 50%
+  - Experience level: 20%
+  - Location match: 15%
+  - Title similarity: 10%
+  - Other factors: 5%
+end note
+
+note right of UC7f
+  Optional ML enhancement:
+  - Semantic skill matching
+  - Word embeddings (BERT)
+  - Historical match success data
+  - Candidate trajectory prediction
+end note
+
+note right of UC8
+  Recommendations based on:
+  1. Match score > threshold (60%)
+  2. User preferences (location, type)
+  3. Recent activity & saved jobs
+  4. Career trajectory analysis
+end note
+
+@enduml

@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - career-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # User Service
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO}
+      SPRING_JPA_SHOW_SQL: ${SPRING_JPA_SHOW_SQL}
+      SERVER_PORT: 8081
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    networks:
+      - career-network
+
+  # Resume Service
+  resume-service:
+    build: ./resume-service
+    container_name: resume-service
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SERVER_PORT: 8082
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    networks:
+      - career-network
+
+  # Job Matcher Service
+  job-matcher-service:
+    build: ./job-matcher-service
+    container_name: job-matcher-service
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SERVER_PORT: 8083
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    networks:
+      - career-network
+
+  # Learning Suggester Service
+  learning-suggester-service:
+    build: ./learning-suggester-service
+    container_name: learning-suggester-service
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SERVER_PORT: 8084
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8084:8084"
+    networks:
+      - career-network
+
+  # Gateway Service
+  gateway-service:
+    build: ./gateway-service
+    container_name: gateway-service
+    restart: always
+    environment:
+      SERVER_PORT: 8080
+      # This is where your routes (to other services) will connect internally
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      RESUME_SERVICE_URL: ${RESUME_SERVICE_URL}
+      JOB_MATCHER_SERVICE_URL: ${JOB_MATCHER_SERVICE_URL}
+      LEARNING_SUGGESTER_SERVICE_URL: ${LEARNING_SUGGESTER_SERVICE_URL}
+    depends_on:
+      - user-service
+      - resume-service
+      - job-matcher-service
+      - learning-suggester-service
+    ports:
+      - "8080:8080"
+    networks:
+      - career-network
+
+# Shared network for all services
+networks:
+  career-network:
+    driver: bridge
+
+# Persistent MySQL data
+volumes:
+  mysql_data:

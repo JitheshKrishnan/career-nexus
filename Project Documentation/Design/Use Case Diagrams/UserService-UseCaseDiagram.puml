@@ -1,0 +1,258 @@
+@startuml User Service
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+  FontStyle plain
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Note Styling ======
+skinparam note {
+  BackgroundColor #2d343e
+  BorderColor #00ffaa
+  FontColor #cdd9e5
+  FontStyle italic
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<JobSeeker>> {
+  BackgroundColor #003366
+  BorderColor #0099ff
+}
+skinparam actor<<Recruiter>> {
+  BackgroundColor #004d26
+  BorderColor #00cc66
+}
+skinparam actor<<Admin>> {
+  BackgroundColor #661a1a
+  BorderColor #ff3333
+}
+skinparam actor<<System>> {
+  BackgroundColor #4d4d00
+  BorderColor #ffff00
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "Job Seeker" as JS <<JobSeeker>>
+actor "Admin" as A <<Admin>>
+actor "Gateway Service" as GW <<System>>
+
+rectangle "User Service" {
+    
+    ' ========== Registration & Authentication ==========
+    package "Registration & Authentication" #18222f {
+        usecase "Register User" as UC1
+        usecase "Validate Email" as UC1a
+        usecase "Send Verification Email" as UC1b
+        usecase "Verify Email Token" as UC1c
+        usecase "Login" as UC2
+        usecase "Validate Credentials" as UC2a
+        usecase "Generate JWT Token" as UC2b
+        usecase "Send Reactivation Link" as UC2d
+        usecase "Reactivate Account" as UC2e
+        usecase "Refresh Token" as UC2c
+        usecase "Logout" as UC3
+        usecase "Invalidate Refresh Token" as UC3a
+    }
+    
+    ' ========== Profile Management ==========
+    package "Profile Management" #1d2733 {
+        usecase "View Profile" as UC4
+        usecase "Update Profile" as UC5
+        usecase "Update Personal Info" as UC5a
+        usecase "Update Contact Info" as UC5b
+        usecase "Update Social Links" as UC5c
+        usecase "Update Professional Info" as UC5d
+        usecase "Update Skills / Education / Projects" as UC5e
+        usecase "Update Profile Picture" as UC6
+        usecase "Upload Profile Picture" as UC6a
+        usecase "Delete Profile Picture" as UC6b
+        usecase "Get User by ID" as UC7
+    }
+    
+    ' ========== Password Management ==========
+    package "Password Management" #232f3d {
+        usecase "Change Password" as UC8
+        usecase "Validate Old Password" as UC8a
+        usecase "Forgot Password" as UC9
+        usecase "Send Reset Password Link" as UC9a
+        usecase "Reset Password" as UC10
+        usecase "Validate Reset Token" as UC10a
+    }
+    
+    ' ========== User Role Management ==========
+    package "Role & Permission Management" #283749 {
+        usecase "Get User Roles" as UC13
+        usecase "Verify Permissions" as UC14
+    }
+    
+    ' ========== Notification Preferences ==========
+    package "Notification Settings" #1b2632 {
+        usecase "View Notification Settings" as UC15
+        usecase "Enable/Disable Job Alerts" as UC16
+        usecase "Enable/Disable Learning Suggestions" as UC17
+        usecase "Mute All Notifications" as UC18
+    }
+    
+    ' ========== Admin Functions ==========
+    package "Admin Operations" #222f3d {
+        usecase "List All Users" as UC19
+        usecase "Search Users" as UC20
+        usecase "Filter by Status" as UC20b
+        usecase "Filter by Name" as UC20c
+        usecase "Suspend User" as UC21
+        usecase "Activate User" as UC22
+        usecase "Delete User" as UC23
+        usecase "View User Activity Log" as UC24
+        usecase "Export User Data" as UC25
+    }
+}
+
+' ========== Job Seeker Associations ==========
+JS --> UC1
+JS --> UC2
+JS --> UC3
+JS --> UC4
+JS --> UC8
+JS --> UC9
+JS --> UC15
+
+' ========== Admin Associations ==========
+A --> UC2
+A --> UC3
+A --> UC4
+A --> UC8
+A --> UC9
+A --> UC15
+A --> UC19
+
+' ========== System Associations ==========
+GW --> UC2
+GW --> UC7    
+GW --> UC14
+
+' ========== Include Relationships ==========
+UC1 ..> UC1a : <<include>>
+UC1 ..> UC1b : <<include>>
+UC2 ..> UC2a : <<include>>
+UC2 ..> UC2b : <<include>>
+UC3 ..> UC3a : <<include>>
+UC5 ..> UC5a : <<include>>
+UC5 ..> UC5b : <<include>>
+UC6 ..> UC6a : <<include>>
+UC8 ..> UC8a : <<include>>
+UC9 ..> UC9a : <<include>>
+UC10 ..> UC10a : <<include>>
+UC14 ..> UC13 : <<include>>
+
+' ========== Extend Relationships ==========
+UC1c ..> UC1 : <<extend>>
+UC2c ..> UC2 : <<extend>>
+UC2d ..> UC2 : <<extend>>
+UC2e ..> UC2d : <<extend>>
+UC5c ..> UC5 : <<extend>>
+UC5d ..> UC5 : <<extend>>
+UC5e ..> UC5d : <<extend>>
+UC5 ..> UC4 : <<extend>>
+UC6 ..> UC4 : <<extend>>
+UC6b ..> UC6 : <<extend>>
+UC10 ..> UC9a : <<extend>>
+UC16 ..> UC15 : <<extend>>
+UC17 ..> UC15 : <<extend>>
+UC18 ..> UC15 : <<extend>>
+UC20 ..> UC19 : <<extend>>
+UC20b ..> UC20 : <<extend>>
+UC20c ..> UC20 : <<extend>>
+UC21 ..> UC19 : <<extend>>
+UC22 ..> UC19 : <<extend>>
+UC23 ..> UC19 : <<extend>>
+UC24 ..> UC19 : <<extend>>
+UC25 ..> UC19 : <<extend>>
+
+' ====== Notes ======
+note right of UC1
+  Creates new user account
+  with role: CANDIDATE or RECRUITER
+  Default status: PENDING_VERIFICATION
+end note
+
+note right of UC2
+  JWT-based authentication
+  Returns: access token + refresh token
+  Expiry: 5-15min (access), 7 days (refresh)
+end note
+
+note right of UC21
+  Suspended users cannot login
+  Triggers notification to user
+end note
+
+note bottom of UC24
+  Tracks login history, profile changes,
+  password resets, and other activities
+end note
+
+note right of UC9
+  Future Enhancement:
+  In addition to the standard
+  "reset link via email" flow,
+  the system will support an
+  optional OTP-based recovery.
+  If the user cannot access
+  email (Mobile phone users),
+  they can request an OTP via
+  registered email or phone.
+end note
+
+@enduml
