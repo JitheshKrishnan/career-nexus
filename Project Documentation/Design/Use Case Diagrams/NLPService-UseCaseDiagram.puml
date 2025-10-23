@@ -1,0 +1,130 @@
+@startuml AI Processing Service
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<JobSeeker>> {
+  BackgroundColor #4d4d00
+  BorderColor #ffff00
+}
+skinparam actor<<Admin>> {
+  BackgroundColor #660066
+  BorderColor #cc00cc
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "Job Seeker" as JS <<JobSeeker>>
+actor "Admin" as A <<Admin>>
+
+rectangle "AI Processing Service" {
+
+    ' ========== Core AI/NLP Functions ==========
+    package "AI / NLP Capabilities" #18222f {
+        usecase "Parse Resume Text" as UC1
+        usecase "Extract Entities (Skills, Experience, Education)" as UC2
+        usecase "Parse Job Description" as UC3
+        usecase "Compute Resume–Job Match Score" as UC4
+        usecase "Identify Skill Gaps" as UC5
+        usecase "Generate Resume Summary" as UC6
+        usecase "Suggest Learning Paths" as UC8
+    }
+
+    ' ========== Model & Data Management ==========
+    package "Model Management" #1d2733 {
+        usecase "Update Model Versions" as UC10
+        usecase "Monitor Model Performance" as UC11
+    }
+}
+
+' ====== Associations ======
+JS --> UC4
+JS --> UC6
+
+A --> UC10
+A --> UC11
+
+' ====== Include Relationships ======
+UC1 ..> UC2 : <<include>>
+UC3 ..> UC2 : <<include>>
+UC4 ..> UC3 : <<include>>
+UC4 ..> UC5 : <<include>>
+UC6 ..> UC1 : <<include>>
+
+UC8 ..> UC5 : <<extend>>
+
+' ====== Notes ======
+note right of UC1
+  Resume Parsing:
+  Extracts structured data such as
+  name, contact, education, experience,
+  and skills from unstructured resumes.
+end note
+
+note right of UC4
+  Match Score:
+  Compares resume and job description
+  using ML embeddings and NLP similarity
+  to generate a percentage match score.
+end note
+
+note right of UC8
+  Learning Suggestions:
+  Identifies missing or weak skills
+  and suggests relevant learning resources.
+end note
+
+@enduml

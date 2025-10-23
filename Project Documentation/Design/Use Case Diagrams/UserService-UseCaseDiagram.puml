@@ -86,7 +86,6 @@ skinparam Arrow<<extend>> {
 ' ====== Actors ======
 actor "Job Seeker" as JS <<JobSeeker>>
 actor "Admin" as A <<Admin>>
-actor "Gateway Service" as GW <<System>>
 
 rectangle "User Service" {
     
@@ -177,24 +176,22 @@ A --> UC9
 A --> UC15
 A --> UC19
 
-' ========== System Associations ==========
-GW --> UC2
-GW --> UC7    
-GW --> UC14
-
 ' ========== Include Relationships ==========
 UC1 ..> UC1a : <<include>>
 UC1 ..> UC1b : <<include>>
 UC2 ..> UC2a : <<include>>
 UC2 ..> UC2b : <<include>>
 UC3 ..> UC3a : <<include>>
+UC4 ..> UC7 : <<include>>
 UC5 ..> UC5a : <<include>>
 UC5 ..> UC5b : <<include>>
+UC5 ..> UC7 : <<include>>
 UC6 ..> UC6a : <<include>>
 UC8 ..> UC8a : <<include>>
 UC9 ..> UC9a : <<include>>
 UC10 ..> UC10a : <<include>>
 UC14 ..> UC13 : <<include>>
+UC19 ..> UC14 : <<include>>
 
 ' ========== Extend Relationships ==========
 UC1c ..> UC1 : <<extend>>
@@ -207,6 +204,7 @@ UC5e ..> UC5d : <<extend>>
 UC5 ..> UC4 : <<extend>>
 UC6 ..> UC4 : <<extend>>
 UC6b ..> UC6 : <<extend>>
+UC7 ..> UC19 : <<extend>>
 UC10 ..> UC9a : <<extend>>
 UC16 ..> UC15 : <<extend>>
 UC17 ..> UC15 : <<extend>>

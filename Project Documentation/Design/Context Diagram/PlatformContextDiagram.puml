@@ -1,0 +1,94 @@
+@startuml Platform Context Diagram
+left to right direction
+
+' ====== Global Style ======
+skinparam backgroundColor #727272ff
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing false
+
+' ====== Line & Border Styling ======
+skinparam Arrow {
+  Color #000000
+  FontColor #ffffff
+}
+skinparam rectangle {
+  BackgroundColor #4f4f4f
+  BorderColor #4f4f4f
+  FontColor #ffffff
+  FontStyle bold
+  RoundCorner 25
+}
+skinparam package {
+  BackgroundColor #4f4f4f
+  BorderColor #4f4f4f
+  FontColor #ffffff
+}
+skinparam actor {
+  FontColor #ffffff
+  BackgroundColor #000000
+  BorderColor #000000
+  FontSize 14
+}
+skinparam note {
+  BackgroundColor #5a5a5a
+  FontColor #ffffff
+  BorderColor #4f4f4f
+  FontStyle italic
+}
+
+' ====== Actors ======
+actor "Job Seeker" as JS
+actor "Admin" as A
+actor "External APIs" as API
+actor "Email / Notification\nProviders" as NOTIF
+actor "External Learning\nPlatforms" as LEARN
+actor "External Job Boards" as JOBS
+
+' ====== Central System ======
+rectangle "Job & Learning Recommendation Platform" as SYSTEM {
+  
+  rectangle "Gateway Service" as GW #3b4a73
+  rectangle "User Service" as US #435c6e
+  rectangle "Resume Service" as RS #5c7061
+  rectangle "Job Matcher Service" as JM #6a584f
+  rectangle "Learning Suggester Service" as LS #5a4d73
+  rectangle "AI / NLP Service" as AI #4a6464
+  rectangle "Notification Service" as NS #735c5c
+}
+
+' ====== External Interactions ======
+JS --> GW : "Web / Mobile Access"
+A --> GW : "Admin Portal"
+R --> GW : "Recruiter Portal (Future)"
+
+GW --> US : "User Auth & Profiles"
+GW --> RS : "Resume Upload / Parsing"
+GW --> JM : "Job Match Requests"
+GW --> LS : "Learning Recommendations"
+
+RS --> AI : "Resume Entity Extraction"
+JM --> AI : "Match Score Calculation"
+LS --> AI : "Skill Gap Analysis"
+
+US --> NS : "Verification / Reset Emails"
+JM --> NS : "Job Notifications"
+LS --> NS : "Learning Notifications"
+NS --> NOTIF : "Send Email / Push"
+
+AI --> API : "External AI APIs (optional)"
+LS --> LEARN : "Fetch Course Data (Udemy, Coursera, YouTube)"
+JM --> JOBS : "Fetch Job Data (Naukri, Glassdoor, LinkedIn)"
+
+' ====== Notes ======
+note right of SYSTEM
+  Simplified Platform Context:
+  - React / Flutter frontends
+  - Spring Boot microservices
+  - Gateway handles routing & auth
+  - AI performs NLP & scoring
+  - Notification system for updates
+  - External APIs for jobs & learning data
+end note
+
+@enduml

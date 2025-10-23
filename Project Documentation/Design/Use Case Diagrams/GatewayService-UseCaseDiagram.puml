@@ -78,11 +78,7 @@ skinparam Arrow<<extend>> {
 ' ====== Actors ======
 actor "Frontend Client\n(React App)" as FRONTEND <<client>>
 actor "Mobile App" as MOBILE <<client>>
-actor "Third-party API" as API <<client>>
-actor "User Service" as US <<s>>
-actor "Resume Service" as RS <<s>>
-actor "Job Matcher Service" as JM <<s>>
-actor "Learning Suggester" as LS <<s>>
+actor "External API" as API <<client>>
 
 rectangle "Gateway Service (API Gateway)" {
     
@@ -102,19 +98,21 @@ rectangle "Gateway Service (API Gateway)" {
         usecase "Authenticate Request" as UC3
         usecase "Validate JWT Token" as UC3a
         usecase "Extract User Claims" as UC3b
-        usecase "Check Token Expiry" as UC3c
+        usecase "Check Refresh Token Expiry" as UC3c
         usecase "Authorize Request" as UC4
         usecase "Check User Permissions" as UC4a
         usecase "Check Role-based Access" as UC4b
         usecase "Validate API Key" as UC5
-        usecase "Handle Token Refresh" as UC6
+        usecase "New Access Token Request" as UC6
     }
     
     ' ========== Rate Limiting & Throttling ==========
     package "Rate Limiting & Throttling" #232f3d {
         usecase "Apply Rate Limiting" as UC7
         usecase "Check Request Count" as UC7a
-        usecase "Track by User ID" as UC7b
+        usecase "Check Global Request Count" as UC7f
+        usecase "Track User" as UC7b
+        usecase "Track by User ID" as UC7e
         usecase "Track by IP Address" as UC7c
         usecase "Return 429 Too Many Requests" as UC7d
         usecase "Apply Throttling" as UC8
@@ -175,81 +173,70 @@ rectangle "Gateway Service (API Gateway)" {
 
 ' ========== Client Associations ==========
 FRONTEND --> UC1
-FRONTEND --> UC3
-FRONTEND --> UC9
-FRONTEND --> UC10
 
 MOBILE --> UC1
-MOBILE --> UC3
-MOBILE --> UC9
-MOBILE --> UC10
 
 API --> UC1
 API --> UC5
 API --> UC7
 
-' ========== Internal Service Associations ==========
-US --> UC1c
-US --> UC22
-US --> UC23
-US --> UC24
-
-RS --> UC1c
-RS --> UC22
-RS --> UC23
-RS --> UC24
-
-JM --> UC1c
-JM --> UC22
-JM --> UC23
-JM --> UC24
-
-LS --> UC1c
-LS --> UC22
-LS --> UC23
-LS --> UC24
-
 ' ========== Include Relationships ==========
-UC1 ..> UC1a : <<include>>
+UC1b ..> UC1a : <<include>>
 UC1 ..> UC1b : <<include>>
-UC1 ..> UC1c : <<include>>
-UC1 ..> UC3 : <<include>>
 UC1 ..> UC14 : <<include>>
 UC1 ..> UC17 : <<include>>
 UC2 ..> UC2a : <<include>>
 UC2 ..> UC2b : <<include>>
 UC3 ..> UC3a : <<include>>
-UC3 ..> UC3b : <<include>>
-UC3 ..> UC3c : <<include>>
+UC3a ..> UC3b : <<include>>
 UC4 ..> UC4a : <<include>>
-UC4 ..> UC4b : <<include>>
+UC4a ..> UC4b : <<include>>
 UC7 ..> UC7a : <<include>>
 UC7 ..> UC7b : <<include>>
+UC7 ..> UC7f : <<include>>
 UC9 ..> UC9a : <<include>>
 UC10 ..> UC10b : <<include>>
 UC10 ..> UC10c : <<include>>
 UC11 ..> UC11a : <<include>>
-UC11 ..> UC11b : <<include>>
+UC11b ..> UC13 : <<include>>
 UC14 ..> UC14a : <<include>>
 UC14 ..> UC14b : <<include>>
+UC14 ..> UC16 : <<include>>
 UC16 ..> UC16a : <<include>>
 UC18 ..> UC18a : <<include>>
 UC18 ..> UC18b : <<include>>
 UC19 ..> UC19a : <<include>>
 
 ' ========== Extend Relationships ==========
+UC1c ..> UC1 : <<extend>>
+UC2 ..> UC1 : <<extend>>
+UC3 ..> UC1 : <<extend>>
+UC3c ..> UC3a : <<extend>>
 UC4 ..> UC3 : <<extend>>
-UC7c ..> UC7 : <<extend>>
+UC6 ..> UC3c : <<extend>>
+UC7c ..> UC7b : <<extend>>
+UC7 ..> UC1 : <<extend>>
 UC7d ..> UC7 : <<extend>>
+UC7e ..> UC7b : <<extend>>
 UC8 ..> UC7 : <<extend>>
 UC8a ..> UC8 : <<extend>>
+UC9 ..> UC1 : <<extend>>
 UC9b ..> UC9 : <<extend>>
+UC10 ..> UC1 : <<extend>>
 UC10a ..> UC10 : <<extend>>
+UC11 ..> UC1 : <<extend>>
+UC11b ..> UC11 : <<extend>>
 UC12 ..> UC11 : <<extend>>
 UC15 ..> UC14 : <<extend>>
+UC18 ..> UC1 : <<extend>>
+UC19 ..> UC1 : <<extend>>
 UC19b ..> UC19 : <<extend>>
 UC19c ..> UC19 : <<extend>>
 UC20 ..> UC18 : <<extend>>
+UC21 ..> UC1 : <<extend>>
+UC22 ..> UC21 : <<extend>>
+UC23 ..> UC21 : <<extend>>
+UC24 ..> UC21 : <<extend>>
 
 ' ====== Notes ======
 note right of UC1
@@ -313,3 +300,16 @@ note right of UC21
 end note
 
 @enduml
+
+
+' Receive Request
+'  ├─ Route Request → Parse Path → Determine Service
+'  ├─ Authenticate Request → Validate JWT → Authorize
+'  ├─ Apply Rate Limiting
+'  ├─ Transform Request + Check Cache
+'  ├─ Discover Services → Load Balance → Forward to Service
+'  ├─ Transform Response → Format + Aggregate → Add CORS
+'  ├─ Cache Response
+'  ├─ Log + Monitor
+'  └─ Handle Errors / Circuit Breaker / Retry
+' Return Response

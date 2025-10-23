@@ -1,0 +1,147 @@
+@startuml UserService-ComponentDiagram
+skinparam linetype ortho
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+!define CONTROLLER_COLOR #003366
+!define SERVICE_COLOR #004d26
+!define REPOSITORY_COLOR #661a1a
+!define UTILITY_COLOR #4d4d00
+!define EXTERNAL_COLOR #660066
+!define GATEWAY_COLOR #4d4d00
+!define PKG_BG #0f141a
+
+skinparam package {
+  BackgroundColor PKG_BG
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+skinparam rectangle {
+  BackgroundColor PKG_BG
+  BorderColor #00bfff
+  FontColor #ffffff
+}
+
+rectangle "User Service" #0f141a {
+  package "API Controllers" #0d1117 {
+    rectangle "Auth Controller" as AuthCtrl #CONTROLLER_COLOR
+    rectangle "User Controller" as UserCtrl #CONTROLLER_COLOR
+    rectangle "Profile Controller" as ProfileCtrl #CONTROLLER_COLOR
+    rectangle "Role Controller" as RoleCtrl #CONTROLLER_COLOR
+  }
+
+  package "Services" #0d1117 {
+    rectangle "Auth Service" as AuthSvc #SERVICE_COLOR
+    rectangle "User Service" as UserSvc #SERVICE_COLOR
+    rectangle "Profile Service" as ProfileSvc #SERVICE_COLOR
+    rectangle "Role Service" as RoleSvc #SERVICE_COLOR
+    rectangle "JWT Service" as JwtSvc #SERVICE_COLOR
+    rectangle "Email Service" as EmailSvc #SERVICE_COLOR
+  }
+
+  package "Repositories" #0d1117 {
+    rectangle "User Repository" as UserRepo #REPOSITORY_COLOR
+    rectangle "Role Repository" as RoleRepo #REPOSITORY_COLOR
+    rectangle "UserRole Repository" as UserRoleRepo #REPOSITORY_COLOR
+    rectangle "Audit Log Repository" as AuditRepo #REPOSITORY_COLOR
+  }
+
+  package "Security & Utils" #0d1117 {
+    rectangle "JWT Filter" as JwtFilter #UTILITY_COLOR
+    rectangle "Password Encoder" as PwdEncoder #UTILITY_COLOR
+    rectangle "Token Provider" as TokenProvider #UTILITY_COLOR
+    rectangle "Validation Utils" as ValUtils #UTILITY_COLOR
+    rectangle "Response Builder" as RespBuilder #UTILITY_COLOR
+  }
+
+  package "Database & External" #0d1117 {
+    rectangle "PostgreSQL DB" as DB #REPOSITORY_COLOR
+    rectangle "SendGrid/SMTP" as ExtEmail #EXTERNAL_COLOR
+  }
+}
+
+rectangle "Gateway Service" #0d1117 {
+  rectangle "API Gateway" as Gateway #GATEWAY_COLOR
+}
+
+' Controller to Service connections
+AuthCtrl --> AuthSvc
+UserCtrl --> UserSvc
+ProfileCtrl --> ProfileSvc
+RoleCtrl --> RoleSvc
+
+' Auth Service dependencies
+AuthSvc --> JwtSvc
+AuthSvc --> UserRepo
+AuthSvc --> PwdEncoder
+AuthSvc --> TokenProvider
+AuthSvc --> EmailSvc
+
+' User Service dependencies
+UserSvc --> UserRepo
+UserSvc --> RoleRepo
+UserSvc --> RoleSvc
+UserSvc --> AuditRepo
+UserSvc --> ValUtils
+UserSvc --> RespBuilder
+
+' Profile Service dependencies
+ProfileSvc --> UserRepo
+ProfileSvc --> RespBuilder
+ProfileSvc --> ValUtils
+
+' Role Service dependencies
+RoleSvc --> RoleRepo
+RoleSvc --> UserRoleRepo
+RoleSvc --> RespBuilder
+
+' JWT Service dependencies
+JwtSvc --> TokenProvider
+JwtSvc --> PwdEncoder
+
+' Email Service dependency
+EmailSvc --> ExtEmail
+
+' Repository to DB connections
+UserRepo --> DB
+RoleRepo --> DB
+UserRoleRepo --> DB
+AuditRepo --> DB
+
+' Security filter to JWT
+JwtFilter --> JwtSvc
+TokenProvider --> PwdEncoder
+
+' Gateway to Controllers
+Gateway --> AuthCtrl
+Gateway --> UserCtrl
+Gateway --> ProfileCtrl
+Gateway --> RoleCtrl
+
+note right of DB
+**User Service Architecture**
+
+**Controllers**: REST endpoints for auth, user management
+**Services**: Business logic with validation & orchestration
+**Repositories**: JPA data access objects (DAO pattern)
+**Security**: JWT validation, password encoding
+
+**Flow**:
+1. Request arrives at Controller
+2. Controller routes to appropriate Service
+3. Service applies business logic
+4. Repository queries/updates DB
+5. Response formatted and returned
+
+**Tech Stack**:
+- Spring Boot 3.5.6
+- Spring Security + JWT
+- PostgreSQL with JPA/Hibernate
+- SendGrid/SMTP for email
+end note
+
+@enduml

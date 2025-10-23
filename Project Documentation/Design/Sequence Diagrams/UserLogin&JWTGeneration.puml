@@ -1,0 +1,206 @@
+@startuml User Login & JWT Token Generation
+skinparam backgroundColor #1a1a1a
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #1a1a1a
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #ffffff
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "User Service" as UserSvc #004d26
+participant "Auth Service" as AuthSvc #004d26
+participant "JWT Service" as JwtSvc #004d26
+participant "User Repository" as UserRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "Redis Cache" as Redis #661a1a
+
+title User Login & JWT Token Generation Flow
+
+== Login Request ==
+
+User -> Gateway: POST /api/auth/login\n{email, password}
+activate Gateway
+
+Gateway -> Gateway: Validate request body
+Gateway -> UserSvc: POST /auth/login\n{email, password}
+activate UserSvc
+
+UserSvc -> AuthSvc: authenticate(email, password)
+activate AuthSvc
+
+== Retrieve User from Database ==
+
+AuthSvc -> UserRepo: findByEmail(email)
+activate UserRepo
+UserRepo -> DB: SELECT id, email, password_hash, name, role, status\nFROM users WHERE email = ?
+activate DB
+
+alt User not found
+    DB --> UserRepo: null (no user found)
+    deactivate DB
+    UserRepo --> AuthSvc: null
+    deactivate UserRepo
+    AuthSvc --> UserSvc: Authentication failed
+    deactivate AuthSvc
+    UserSvc --> Gateway: 401 Unauthorized\n"Invalid credentials"
+    deactivate UserSvc
+    Gateway --> User: Error: Invalid email or password
+    deactivate Gateway
+else User exists
+    DB --> UserRepo: User {id: 123, email, passwordHash, role, status}
+    deactivate DB
+    UserRepo --> AuthSvc: User object
+    deactivate UserRepo
+    
+    == Validate Account Status ==
+    
+    AuthSvc -> AuthSvc: Check user.status
+    
+    alt Status = SUSPENDED
+        AuthSvc --> UserSvc: Account suspended
+        deactivate AuthSvc
+        UserSvc --> Gateway: 403 Forbidden\n"Account suspended. Contact admin."
+        deactivate UserSvc
+        Gateway --> User: Error: Account suspended
+        deactivate Gateway
+    else Status = PENDING_VERIFICATION
+        AuthSvc --> UserSvc: Email not verified
+        deactivate AuthSvc
+        UserSvc --> Gateway: 403 Forbidden\n"Please verify your email first"
+        deactivate UserSvc
+        Gateway --> User: Error: Verify email to login
+        deactivate Gateway
+    else Status = ACTIVE
+        
+        == Validate Password ==
+        
+        AuthSvc -> AuthSvc: BCrypt.compare(password, passwordHash)
+        
+        alt Password incorrect
+            AuthSvc --> UserSvc: Invalid password
+            deactivate AuthSvc
+            UserSvc --> Gateway: 401 Unauthorized\n"Invalid credentials"
+            deactivate UserSvc
+            Gateway --> User: Error: Invalid email or password
+            deactivate Gateway
+        else Password correct
+            
+            == Generate JWT Tokens ==
+            
+            AuthSvc -> JwtSvc: generateTokens(userId, email, role)
+            activate JwtSvc
+            
+            JwtSvc -> JwtSvc: Create Access Token\nPayload: {userId, email, role}\nExpiry: 15 minutes\nAlgorithm: HS256
+            
+            JwtSvc -> JwtSvc: Sign Access Token with SECRET_KEY
+            
+            JwtSvc -> JwtSvc: Create Refresh Token\nPayload: {userId, tokenId}\nExpiry: 7 days\nAlgorithm: HS256
+            
+            JwtSvc -> JwtSvc: Sign Refresh Token with REFRESH_SECRET_KEY
+            
+            JwtSvc -> JwtSvc: Generate tokenId = UUID()
+            
+            JwtSvc -> Redis: SET refresh_token:{tokenId}\nVALUE: {userId, email, issuedAt}\nTTL: 7 days
+            activate Redis
+            Redis --> JwtSvc: Token stored
+            deactivate Redis
+            
+            JwtSvc --> AuthSvc: {accessToken, refreshToken}
+            deactivate JwtSvc
+            
+            == Log Login Activity ==
+            
+            AuthSvc -> UserRepo: saveLoginEvent(userId, timestamp, ipAddress)
+            activate UserRepo
+            UserRepo -> DB: INSERT INTO audit_logs\n(user_id, action, timestamp, ip_address)\nVALUES (123, 'LOGIN', NOW(), '192.168.1.1')
+            activate DB
+            DB --> UserRepo: Event logged
+            deactivate DB
+            deactivate UserRepo
+            
+            AuthSvc --> UserSvc: {user, accessToken, refreshToken}
+            deactivate AuthSvc
+            
+            UserSvc --> Gateway: 200 OK\n{accessToken, refreshToken, user: {id, email, name, role}}
+            deactivate UserSvc
+            
+            Gateway --> User: ✓ Login successful!\n{accessToken, refreshToken, user}
+            deactivate Gateway
+            
+            note over User
+            User stores tokens:
+            - accessToken → Authorization header for API calls
+            - refreshToken → Secure cookie or local storage
+            
+            Access Token Structure (JWT):
+            Header: {alg: "HS256", typ: "JWT"}
+            Payload: {userId: 123, email: "user@example.com", 
+                     role: "CANDIDATE", exp: 1234567890}
+            Signature: HMACSHA256(base64(header).base64(payload), SECRET_KEY)
+            end note
+            
+        end
+    end
+end
+
+== Subsequent Authenticated Requests ==
+
+User -> Gateway: GET /api/resumes/my-resumes\nAuthorization: Bearer {accessToken}
+activate Gateway
+
+Gateway -> Gateway: Extract token from header
+Gateway -> Gateway: JWT Filter validates token
+
+alt Token expired
+    Gateway --> User: 401 Unauthorized\n"Token expired. Refresh required."
+    deactivate Gateway
+else Token valid
+    Gateway -> Gateway: Extract userId, role from token
+    Gateway -> Gateway: Check permissions for /resumes/**
+    Gateway -> Gateway: Add userId to request context
+    Gateway -> Gateway: Route to Resume Service
+    note over Gateway: Request forwarded with userId\nNo need to query User Service again
+end
+
+note over User, Redis
+**Key Points:**
+1. **Access Token**: Short-lived (15 min), contains user info
+2. **Refresh Token**: Long-lived (7 days), stored in Redis
+3. Password never stored in plain text (BCrypt hashing)
+4. Failed login attempts logged for security
+5. Tokens follow JWT standard (RFC 7519)
+6. Gateway validates tokens without calling User Service
+7. Refresh token revocable (delete from Redis)
+end note
+
+@enduml

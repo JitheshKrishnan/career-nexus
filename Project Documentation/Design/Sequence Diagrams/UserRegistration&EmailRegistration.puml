@@ -1,0 +1,302 @@
+@startuml User Registration & Email Verification
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 16
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a1a1a
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #1a1a1a
+    BorderColor #00ffaa
+    FontColor #ffffff
+}
+
+skinparam sequenceMessage {
+  FontColor #ffffffff
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "User Service" as UserSvc #004d26
+participant "User Repository" as UserRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "Notification Service" as NotifSvc #004d26
+participant "Kafka/RabbitMQ" as Queue #660066
+participant "SendGrid" as Email #660066
+
+title User Registration & Email Verification Flow
+
+== Registration Request ==
+
+User -> Gateway: POST /api/auth/register\n{email, password, name, role}
+activate Gateway
+
+Gateway -> Gateway : Validate request body
+Gateway -> UserSvc: POST /auth/register
+activate UserSvc
+
+UserSvc -> UserSvc: Validate email format
+UserSvc -> UserSvc: Check password strength\n(min 8 chars, uppercase, special char)
+
+UserSvc -> UserRepo: findByEmail(email)
+activate UserRepo
+UserRepo -> DB: SELECT * FROM users WHERE email = ?
+activate DB
+DB --> UserRepo: null (user doesn't exist)
+deactivate DB
+UserRepo --> UserSvc: null
+deactivate UserRepo
+
+alt Email already exists
+    UserRepo --> UserSvc: User found
+
+    alt User is already verified
+        UserSvc --> Gateway: 409 Conflict\n"Email already registered and verified"
+        Gateway --> User: Error: Email already registered
+    else User is pending verification
+
+        UserSvc -> UserRepo: findVerificationToken(userId)
+        activate UserRepo
+        UserRepo -> DB: SELECT * FROM verification_tokens WHERE user_id = ?
+        activate DB
+        DB --> UserRepo: token + expiry
+        deactivate DB
+        UserRepo --> UserSvc: token + expiry
+        deactivate UserRepo
+
+        alt Token expired
+            UserSvc -> UserRepo: deleteVerificationToken(userId)
+            activate UserRepo
+            UserRepo -> DB: DELETE FROM verification_tokens WHERE user_id = ?
+            activate DB
+            DB --> UserRepo: Token deleted
+            deactivate DB
+            UserRepo --> UserSvc: Token removed
+            deactivate UserRepo
+
+            UserSvc --> Gateway: 410 Gone\n"Verification link expired. Resend?"
+            Gateway --> User: Verification link expired.\nClick 'Resend Verification'
+        else Token still valid
+            UserSvc --> Gateway: 409 Conflict\n"Email pending verification"
+            Gateway --> User: Please verify your email to continue
+        end
+    end
+else Email is available
+    
+    UserSvc -> UserSvc: Hash password (BCrypt)
+    UserSvc -> UserSvc: Generate verification token\n(UUID + expiry: 24hrs)
+    
+    UserSvc -> UserRepo: save(newUser)
+    activate UserRepo
+    UserRepo -> DB: INSERT INTO users\n(email, password_hash, name, role, status)\nVALUES (?, ?, ?, ?, 'PENDING_VERIFICATION')
+    activate DB
+    DB --> UserRepo: User ID = 123
+    deactivate DB
+    UserRepo --> UserSvc: User saved (id: 123)
+    deactivate UserRepo
+    
+    UserSvc -> UserRepo: saveVerificationToken(userId, token, expiry)
+    activate UserRepo
+    UserRepo -> DB: INSERT INTO verification_tokens\n(user_id, token, expires_at)
+    activate DB
+    DB --> UserRepo: Token saved
+    deactivate DB
+    UserRepo --> UserSvc: Token saved
+    deactivate UserRepo
+    
+    == Send Verification Email ==
+    
+    UserSvc -> NotifSvc: POST /notifications/email/verification\n{userId, email, token}
+    activate NotifSvc
+    
+    NotifSvc -> Queue: Publish email_verification_event\n{userId, email, verificationLink}
+    activate Queue
+    Queue --> NotifSvc: Event published
+    deactivate Queue
+    
+    NotifSvc --> UserSvc: 202 Accepted (Email queued)
+    deactivate NotifSvc
+    
+    UserSvc --> Gateway: 201 Created\n{userId, email, status: "PENDING_VERIFICATION"}
+    deactivate UserSvc
+    
+    Gateway --> User: Registration successful!\nCheck email for verification
+    deactivate Gateway
+    
+end
+
+== Resend Verification Email ==
+
+User -> Gateway: POST /api/auth/resend-verification\n{email}
+activate Gateway
+
+Gateway -> UserSvc: POST /auth/resend-verification
+activate UserSvc
+
+UserSvc -> UserRepo: findByEmail(email)
+activate UserRepo
+UserRepo -> DB: SELECT * FROM users WHERE email = ?
+activate DB
+DB --> UserRepo: {id: 123, status: 'PENDING_VERIFICATION'}
+deactivate DB
+UserRepo --> UserSvc: User found (status: PENDING_VERIFICATION)
+deactivate UserRepo
+
+alt User not found
+    UserSvc --> Gateway: 404 Not Found\n"Email not registered"
+    Gateway --> User: Error: Email not registered
+else User exists
+    alt User already verified
+        UserSvc --> Gateway: 409 Conflict\n"Email already verified"
+        Gateway --> User: Email already verified. Please login.
+    else Pending verification
+        UserSvc -> UserRepo: findVerificationToken(userId)
+        activate UserRepo
+        UserRepo -> DB: SELECT * FROM verification_tokens WHERE user_id = ?
+        activate DB
+        DB --> UserRepo: token not found (expired/deleted)
+        deactivate DB
+        UserRepo --> UserSvc: no token
+        deactivate UserRepo
+        
+        UserSvc -> UserSvc: Generate new verification token (UUID + 24h expiry)
+        
+        UserSvc -> UserRepo: saveVerificationToken(userId, token, expiry)
+        activate UserRepo
+        UserRepo -> DB: INSERT INTO verification_tokens (user_id, token, expires_at)
+        activate DB
+        DB --> UserRepo: Token saved
+        deactivate DB
+        UserRepo --> UserSvc: Token saved
+        deactivate UserRepo
+
+        == Send New Verification Email ==
+
+        UserSvc -> NotifSvc: POST /notifications/email/verification\n{userId, email, token}
+        activate NotifSvc
+        
+        NotifSvc -> Queue: Publish email_verification_event\n{userId, email, verificationLink}
+        activate Queue
+        Queue --> NotifSvc: Event published
+        deactivate Queue
+        
+        NotifSvc --> UserSvc: 202 Accepted (Email queued)
+        deactivate NotifSvc
+        
+        UserSvc --> Gateway: 200 OK\n"Verification email resent"
+        deactivate UserSvc
+        
+        Gateway --> User: New verification email sent.\nCheck your inbox.
+        deactivate Gateway
+    end
+end
+
+
+== Email Processing (Async) ==
+
+Queue -> NotifSvc: Consume email_verification_event
+activate NotifSvc
+
+NotifSvc -> NotifSvc: Load email template:\n"verification_email.html"
+NotifSvc -> NotifSvc: Replace variables:\n{{name}}, {{verificationLink}}
+
+NotifSvc -> Email: POST /v3/mail/send\n{to, subject, html_content}
+activate Email
+Email --> NotifSvc: 202 Accepted (Email sent)
+deactivate Email
+
+NotifSvc -> NotifSvc: Log email event\n(status: SENT, timestamp)
+deactivate NotifSvc
+
+note over User
+User receives email:
+"Welcome! Click here to verify your email:
+https://careernexus.com/verify?token=abc123xyz"
+end note
+
+== Email Verification ==
+
+User -> Gateway: GET /api/auth/verify?token=abc123xyz
+activate Gateway
+
+Gateway -> UserSvc: GET /auth/verify?token=abc123xyz
+activate UserSvc
+
+UserSvc -> UserRepo: findByVerificationToken(token)
+activate UserRepo
+UserRepo -> DB: SELECT * FROM verification_tokens\nWHERE token = ? AND expires_at > NOW()
+activate DB
+
+alt Token valid and not expired
+    DB --> UserRepo: {userId: 123, expiresAt: ...}
+    deactivate DB
+    UserRepo --> UserSvc: Token found (userId: 123)
+    deactivate UserRepo
+    
+    UserSvc -> UserRepo: updateUserStatus(userId, "ACTIVE")
+    activate UserRepo
+    UserRepo -> DB: UPDATE users\nSET status = 'ACTIVE', email_verified = true\nWHERE id = 123
+    activate DB
+    DB --> UserRepo: User updated
+    deactivate DB
+    deactivate UserRepo
+    
+    UserSvc -> UserRepo: deleteVerificationToken(token)
+    activate UserRepo
+    UserRepo -> DB: DELETE FROM verification_tokens WHERE token = ?
+    activate DB
+    DB --> UserRepo: Token deleted
+    deactivate DB
+    deactivate UserRepo
+    
+    UserSvc --> Gateway: 200 OK\n{message: "Email verified successfully"}
+    deactivate UserSvc
+    Gateway --> User: ✓ Email verified! You can now login.
+    deactivate Gateway
+    
+else Token invalid or expired
+    DB --> UserRepo: null (token not found/expired)
+    deactivate DB
+    UserRepo --> UserSvc: null
+    deactivate UserRepo
+    UserSvc --> Gateway: 400 Bad Request\n"Invalid or expired token"
+    deactivate UserSvc
+    Gateway --> User: Error: Verification link expired.\nRequest a new one.
+    deactivate Gateway
+end
+
+note over User, Email
+**Key Points:**
+1. Password hashed with BCrypt (cost factor 10-12)
+2. Verification token expires in 24 hours
+3. User status: PENDING_VERIFICATION → ACTIVE
+4. Email sent asynchronously via message queue
+5. Token is single-use (deleted after verification)
+6. User can request resend if expired
+end note
+
+@enduml

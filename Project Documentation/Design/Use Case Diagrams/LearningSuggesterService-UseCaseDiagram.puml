@@ -116,6 +116,7 @@ rectangle "Learning Suggester Service" {
     
     ' ========== Learning Path Generation ==========
     package "Learning Path Creation" #232f3d {
+        usecase "Get Learning Suggestions" as UC10f
         usecase "Generate Learning Path" as UC10
         usecase "Analyze Skill Dependencies" as UC10a
         usecase "Order Skills by Priority" as UC10b
@@ -145,8 +146,6 @@ rectangle "Learning Suggester Service" {
 }
 
 ' ========== Job Seeker Associations ==========
-JS --> UC4
-JS --> UC10
 JS --> UC11
 JS --> UC14
 JS --> UC15
@@ -167,7 +166,9 @@ UC10 ..> UC10a : <<include>>
 UC10 ..> UC10b : <<include>>
 UC10 ..> UC10c : <<include>>
 UC10 ..> UC10d : <<include>>
-UC10 ..> UC1 : <<include>>
+UC10f ..> UC4 : <<include>>
+UC10f ..> UC1 : <<include>>
+UC10f ..> UC10 : <<include>>
 UC14 ..> UC14e : <<include>>
 UC14 ..> UC14f : <<include>>
 UC15 ..> UC15a : <<include>>

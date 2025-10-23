@@ -1,0 +1,241 @@
+@startuml Notification Service
+left to right direction
+skinparam actorStyle awesome
+
+' 🌙 ====== Global Dark Theme ======
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 14
+skinparam shadowing true
+
+' ====== Use Case Styling ======
+skinparam usecase {
+  BackgroundColor #1e232b
+  BorderColor #00bfff
+  ArrowColor #ffffff
+  FontColor #e6edf3
+  FontStyle plain
+}
+
+' ====== Package Styling ======
+skinparam package {
+  BackgroundColor #141820
+  BorderColor #00bfff
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Rectangle (System Boundary) ======
+skinparam rectangle {
+  BackgroundColor #0f141a
+  BorderColor #00bfff
+  RoundCorner 15
+  FontColor #ffffff
+  FontStyle bold
+}
+
+' ====== Note Styling ======
+skinparam note {
+  BackgroundColor #2d343e
+  BorderColor #00ffaa
+  FontColor #cdd9e5
+  FontStyle italic
+}
+
+' ====== Actor Colors ======
+skinparam actor {
+  FontColor #ffffff
+  BorderColor #00bfff
+  BackgroundColor #1a2432
+  FontSize 14
+}
+
+skinparam actor<<s>> {
+  BackgroundColor #4d4d00
+  BorderColor #ffff00
+}
+skinparam actor<<ext>> {
+  BackgroundColor #660066
+  BorderColor #cc00cc
+}
+
+' ====== Relationship Colors ======
+skinparam Arrow {
+  Color #00ffaa
+  FontColor #00ffaa
+}
+skinparam Arrow<<include>> {
+  Color #0099ff
+  FontColor #0099ff
+  LineStyle dotted
+}
+skinparam Arrow<<extend>> {
+  Color #ff9900
+  FontColor #ff9900
+  LineStyle dashed
+}
+
+' ====== Actors ======
+actor "External Email Provider" as EMAILPROVIDER <<ext>>
+actor "Push Notification Provider" as PUSHPROVIDER <<ext>>
+actor "Job Seeker" as JS <<JobSeeker>>
+actor "Admin" as A <<Admin>>
+
+rectangle "Notification Service (with Email Service)" {
+    
+    ' ========== Email Notifications ==========
+    package "Email Notification Management" #18222f {
+        usecase "Send Email" as UC1
+        usecase "Queue Email" as UC1a
+        usecase "Build Email Template" as UC1b
+        usecase "Populate Template Variables" as UC1c
+        usecase "Validate Email Address" as UC1d
+        usecase "Send via Email Provider" as UC1e
+        usecase "Track Email Status" as UC1f
+        usecase "Log Email Delivery" as UC1g
+    }
+    
+    ' ========== Email Types ==========
+    package "Email Types" #1d2733 {
+        usecase "Verification Email" as UC2
+        usecase "Password Reset Email" as UC3
+        usecase "System Notification Email" as UC9
+    }
+    
+    ' ========== Push Notifications ==========
+    package "Push Notification Management" #232f3d {
+        usecase "Send Push Notification" as UC11
+        usecase "Build Notification Payload" as UC11a
+        usecase "Target User Devices" as UC11b
+        usecase "Send via Push Provider" as UC11c
+        usecase "Handle Failed Delivery" as UC11d
+        usecase "Track Notification Status" as UC11e
+        usecase "Log Push Delivery" as UC11f
+    }
+    
+    ' ========== Push Notification Types ==========
+    package "Push Notification Types" #283749 {
+        usecase "System Update Alert" as UC19
+    }
+    
+    ' ========== Notification Preferences ==========
+    package "Notification Preferences" #1b2632 {
+        usecase "Get Notification Settings" as UC20
+        usecase "Get Email Preferences" as UC20a
+        usecase "Get Push Preferences" as UC20b
+        usecase "Update Email Frequency" as UC21
+        usecase "Update Notification Channel" as UC22
+        usecase "Opt-in to Email" as UC23
+        usecase "Opt-out of Email" as UC24
+        usecase "Opt-in to Push" as UC25
+        usecase "Opt-out of Push" as UC26
+    }
+    
+    ' ========== Notification Logging & Analytics ==========
+    package "Logging & Analytics" #18262f {
+        usecase "Log Notification Event" as UC34
+        usecase "Track Delivery Status" as UC34a
+        usecase "Get Notification Stats" as UC35
+        usecase "Get User Notification History" as UC37
+    }
+}
+
+' ========== Microservice Event Associations ==========
+
+EMAILPROVIDER --> UC1
+PUSHPROVIDER --> UC11
+JS --> UC20
+JS --> UC2
+JS --> UC3
+A --> UC20
+A --> UC2
+A --> UC3
+
+' ========== Include Relationships ==========
+UC1 ..> UC1a : <<include>>
+UC1 ..> UC1b : <<include>>
+UC1 ..> UC1d : <<include>>
+UC1 ..> UC1e : <<include>>
+UC1 ..> UC1f : <<include>>
+UC1 ..> UC1g : <<include>>
+UC1 ..> UC34 : <<include>>
+UC2 ..> UC1 : <<include>>
+UC3 ..> UC1 : <<include>>
+UC9 ..> UC1 : <<include>>
+UC11 ..> UC11a : <<include>>
+UC11 ..> UC11b : <<include>>
+UC11 ..> UC11c : <<include>>
+UC11 ..> UC11e : <<include>>
+UC11 ..> UC11f : <<include>>
+UC11 ..> UC34 : <<include>>
+UC19 ..> UC11 : <<include>>
+UC20 ..> UC20a : <<include>>
+UC20 ..> UC20b : <<include>>
+UC34 ..> UC34a : <<include>>
+
+' ========== Extend Relationships ==========
+UC1c ..> UC1b : <<extend>>
+UC1d ..> UC1 : <<extend>>
+UC11d ..> UC11 : <<extend>>
+UC21 ..> UC20a : <<extend>>
+UC22 ..> UC20 : <<extend>>
+UC23 ..> UC21 : <<extend>>
+UC24 ..> UC21 : <<extend>>
+UC25 ..> UC22 : <<extend>>
+UC26 ..> UC22 : <<extend>>
+UC35 ..> UC34 : <<extend>>
+UC37 ..> UC34 : <<extend>>
+
+' ====== Notes ======
+note right of UC1
+  Email Queue Processing:
+  1. Receive email request
+  2. Validate & build template
+  3. Queue to message broker (Kafka/RabbitMQ)
+  4. Process asynchronously via worker
+  5. Send via configured Email Provider (SMTP/SendGrid/SES)
+  6. Track delivery status
+end note
+
+note right of UC2
+  Verification Email:
+  - Contains: Email verification link
+  - Action URL: /api/auth/verify?token={TOKEN}
+  - Token TTL: 24 hours
+  - Resend option available
+end note
+
+note right of UC3
+  Password Reset Email:
+  - Contains: Password reset link
+  - Action URL: /api/auth/reset-password?token={TOKEN}
+  - Token TTL: 1 hour
+  - One-time use only
+end note
+
+note right of UC11
+  Push Notification Flow:
+  1. Build payload with title, body, deep link
+  2. Fetch user device tokens from FCM
+  3. Send via Firebase Cloud Messaging
+  4. Handle registration errors
+  5. Track delivery & engagement
+end note
+
+note right of UC20
+  Notification Preferences:
+  - Email frequency: Daily/Weekly/Monthly/Never
+  - Channels: Email, Push, Both
+  - Categories: Jobs, Learning, System, Offers
+  - Quiet hours: Disable push 9 PM - 8 AM
+end note
+
+note bottom of UC34
+  Analytics Tracking:
+  - Delivery status: Sent, Delivered, Bounced, Complained
+  - Engagement: Opened, Clicked
+  - Metrics: Delivery rate, Open rate, CTR
+  - Storage: Time-series DB (InfluxDB/Prometheus)
+end note
+
+@enduml
