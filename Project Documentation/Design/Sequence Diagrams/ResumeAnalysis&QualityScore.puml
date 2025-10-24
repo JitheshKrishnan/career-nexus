@@ -1,0 +1,262 @@
+@startuml Resume Analysis & Quality Score
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Resume Service" as ResumeSvc #004d26
+participant "Resume Analyzer" as Analyzer #004d26
+participant "Resume Repository" as ResumeRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "NLP/AI Service" as NLP #004d26
+participant "Redis Cache" as Redis #661a1a
+
+title Resume Analysis & Quality Score Calculation
+
+== Step 1: Request Resume Analysis ==
+
+User -> Gateway: GET /api/resumes/{resumeId}/analysis\nAuthorization: Bearer {accessToken}
+activate Gateway
+
+Gateway -> Gateway: Validate JWT token\nExtract userId from token
+
+Gateway -> ResumeSvc: GET /resumes/{resumeId}/analysis?userId=123
+activate ResumeSvc
+
+== Step 2: Verify Ownership & Fetch Resume ==
+
+ResumeSvc -> ResumeRepo: findByIdAndUserId(resumeId, userId)
+activate ResumeRepo
+ResumeRepo -> DB: SELECT * FROM resumes\nWHERE id = 456 AND user_id = 123\nAND parse_status = 'COMPLETED'
+activate DB
+
+alt Resume not found or not owned by user
+    DB --> ResumeRepo: null
+    deactivate DB
+    ResumeRepo --> ResumeSvc: null
+    deactivate ResumeRepo
+    ResumeSvc --> Gateway: 404 Not Found\n"Resume not found or access denied"
+    deactivate ResumeSvc
+    Gateway --> User: Error: Resume not found
+    deactivate Gateway
+else Resume found and parsing completed
+    DB --> ResumeRepo: Resume {id, userId, parseStatus: COMPLETED}
+    deactivate DB
+    ResumeRepo --> ResumeSvc: Resume object
+    deactivate ResumeRepo
+    
+    == Step 3: Check Cache ==
+    
+    ResumeSvc -> Redis: GET resume:456:analysis
+    activate Redis
+    
+    alt Cache hit
+        Redis --> ResumeSvc: {cachedAnalysisData}
+        deactivate Redis
+        ResumeSvc --> Gateway: 200 OK\n{analysisData from cache}
+        deactivate ResumeSvc
+        Gateway --> User: Analysis results (cached)
+        deactivate Gateway
+    else Cache miss
+        Redis --> ResumeSvc: null
+        deactivate Redis
+        
+        == Step 4: Fetch Parsed Resume Data ==
+        
+        ResumeSvc -> ResumeRepo: getParsedData(resumeId)
+        activate ResumeRepo
+        
+        ResumeRepo -> DB: SELECT * FROM resume_contact_info WHERE resume_id = 456
+        activate DB
+        DB --> ResumeRepo: {name, email, phone}
+        deactivate DB
+        
+        ResumeRepo -> DB: SELECT * FROM resume_skills WHERE resume_id = 456
+        activate DB
+        DB --> ResumeRepo: [{skill1}, {skill2}, ...]
+        deactivate DB
+        
+        ResumeRepo -> DB: SELECT * FROM resume_experience WHERE resume_id = 456
+        activate DB
+        DB --> ResumeRepo: [{exp1}, {exp2}, ...]
+        deactivate DB
+        
+        ResumeRepo -> DB: SELECT * FROM resume_education WHERE resume_id = 456
+        activate DB
+        DB --> ResumeRepo: [{edu1}, ...]
+        deactivate DB
+        
+        ResumeRepo -> DB: SELECT * FROM resume_certifications WHERE resume_id = 456
+        activate DB
+        DB --> ResumeRepo: [{cert1}, ...]
+        deactivate DB
+        
+        ResumeRepo --> ResumeSvc: {completeParsedData}
+        deactivate ResumeRepo
+        
+        == Step 5: Analyze Resume Completeness ==
+        
+        ResumeSvc -> Analyzer: analyzeCompleteness(parsedData)
+        activate Analyzer
+        
+        Analyzer -> Analyzer: **Check Contact Information (10%)**\nEmail present? ✓ +5%\nPhone present? ✓ +3%\nLinkedIn/GitHub? ✓ +2%\n**Subtotal: 10/10**
+        
+        Analyzer -> Analyzer: **Check Skills Section (25%)**\nSkills present? ✓\nCount: 12 skills\nTechnical skills? ✓ (8 technical)\nSoft skills? ✓ (4 soft)\nDiversity of skills? ✓ (multiple domains)\n**Subtotal: 24/25**
+        
+        Analyzer -> Analyzer: **Check Experience Section (30%)**\nExperience entries? ✓ (3 entries)\nTotal years: 5 years ✓\nResponsibilities detailed? ✓\nCompany names present? ✓\nDates present? ✓\n**Subtotal: 28/30**
+        
+        Analyzer -> Analyzer: **Check Education Section (20%)**\nEducation present? ✓\nDegree specified? ✓\nInstitution name? ✓\nGraduation year? ✓\nField of study? ✓\n**Subtotal: 20/20**
+        
+        Analyzer -> Analyzer: **Check Formatting & Clarity (15%)**\nProper sections? ✓\nConsistent formatting? ✓\nNo spelling errors? (via NLP)\nReadability score? (via NLP)\n**Subtotal: 12/15** (minor formatting issues)
+        
+        Analyzer -> Analyzer: **Total Quality Score:**\n10 + 24 + 28 + 20 + 12 = **94/100**\n**Grade: Excellent**
+        
+        Analyzer --> ResumeSvc: {completenessScore: 94}
+        deactivate Analyzer
+        
+        == Step 6: Identify Missing Sections ==
+        
+        ResumeSvc -> Analyzer: identifyMissingSections(parsedData)
+        activate Analyzer
+        
+        Analyzer -> Analyzer: Check for optional sections:\n- Projects: ❌ Missing\n- Certifications: ✓ Present (AWS Certified)\n- Awards: ❌ Missing\n- Publications: ❌ Missing\n- Languages: ❌ Missing\n- Volunteer work: ❌ Missing
+        
+        Analyzer --> ResumeSvc: {missingSections: ["Projects", "Awards", "Languages"]}
+        deactivate Analyzer
+        
+        == Step 7: NLP-Based Suggestions ==
+        
+        ResumeSvc -> NLP: POST /nlp/analyze-resume-quality\n{resumeText, parsedData}
+        activate NLP
+        
+        NLP -> NLP: Analyze writing quality:\n- Check grammar and spelling\n- Evaluate action verbs usage\n- Assess quantifiable achievements\n- Check for buzzwords/clichés
+        
+        NLP -> NLP: Readability analysis:\n- Flesch-Kincaid score: 62 (Good)\n- Average sentence length: 15 words\n- Passive voice usage: 8%
+        
+        NLP -> NLP: Content analysis:\n- Action verbs found: 18\n- Quantifiable results: 6\n- Technical depth: High\n- Buzzwords: 2 (minimal)
+        
+        NLP --> ResumeSvc: {\n  grammarScore: 95,\n  readabilityScore: 85,\n  actionVerbCount: 18,\n  quantifiableResults: 6,\n  suggestions: [\n    "Add more quantifiable achievements",\n    "Consider adding a Projects section",\n    "Include languages spoken"\n  ]\n}
+        deactivate NLP
+        
+        == Step 8: Generate Improvement Suggestions ==
+        
+        ResumeSvc -> Analyzer: generateSuggestions(analysisData)
+        activate Analyzer
+        
+        Analyzer -> Analyzer: Prioritize suggestions:\n1. Add "Projects" section (High)\n2. Include more quantifiable achievements (Medium)\n3. Add "Languages" section (Low)\n4. Consider industry-specific keywords (Medium)
+        
+        Analyzer -> Analyzer: Generate skill gap insights:\n- Strong in: Backend development, Cloud\n- Could improve: Frontend frameworks\n- Emerging skills to add: Kubernetes, GraphQL
+        
+        Analyzer --> ResumeSvc: {prioritizedSuggestions}
+        deactivate Analyzer
+        
+        == Step 9: Compile Final Analysis ==
+        
+        ResumeSvc -> ResumeSvc: Compile final analysis:\n{\n  overallScore: 94,\n  breakdown: {\n    contactInfo: 10/10,\n    skills: 24/25,\n    experience: 28/30,\n    education: 20/20,\n    formatting: 12/15\n  },\n  grade: "EXCELLENT",\n  strengths: [\n    "Comprehensive skill set",\n    "Solid work experience",\n    "Clear contact information"\n  ],\n  weaknesses: [\n    "Missing projects section",\n    "Could use more quantifiable results"\n  ],\n  missingSections: ["Projects", "Awards", "Languages"],\n  suggestions: [\n    {priority: "HIGH", text: "Add Projects section"},\n    {priority: "MEDIUM", text: "Include quantifiable achievements"},\n    {priority: "LOW", text: "Add Languages section"}\n  ],\n  readabilityScore: 85,\n  grammarScore: 95\n}
+        
+        == Step 10: Cache Analysis Results ==
+        
+        ResumeSvc -> Redis: SET resume:456:analysis\nVALUE: {analysisData JSON}\nTTL: 24 hours
+        activate Redis
+        Redis --> ResumeSvc: Cached
+        deactivate Redis
+        
+        == Step 11: Store Analysis History ==
+        
+        ResumeSvc -> ResumeRepo: saveAnalysisHistory(resumeId, analysisData)
+        activate ResumeRepo
+        ResumeRepo -> DB: INSERT INTO resume_analysis_history\n(resume_id, overall_score, breakdown, \nsuggestions, analyzed_at)\nVALUES (456, 94, {...}, {...}, NOW())
+        activate DB
+        DB --> ResumeRepo: Analysis saved
+        deactivate DB
+        deactivate ResumeRepo
+        
+        ResumeSvc --> Gateway: 200 OK\n{analysisData}
+        deactivate ResumeSvc
+        
+        Gateway --> User: ✓ Resume Analysis Complete
+        deactivate Gateway
+    end
+end
+
+note over User
+**Analysis Results Display:**
+
+Overall Score: 94/100 (Excellent) ⭐⭐⭐⭐⭐
+
+Breakdown:
+✅ Contact Info: 10/10
+✅ Skills: 24/25
+✅ Experience: 28/30
+✅ Education: 20/20
+⚠️  Formatting: 12/15
+
+Strengths:
+• Comprehensive technical skill set
+• Strong work experience history
+• Clear and complete contact info
+
+Areas for Improvement:
+• Add a "Projects" section
+• Include more quantifiable achievements
+• Add "Languages" section
+
+Writing Quality:
+• Grammar: 95/100
+• Readability: 85/100
+• Action verbs: 18 found ✓
+end note
+
+note over User, Redis
+**Quality Score Formula (0-100):**
+- Contact Info: 10% (email, phone, social links)
+- Skills Section: 25% (count, diversity, technical vs soft)
+- Experience: 30% (years, detail, responsibilities)
+- Education: 20% (degree, institution, dates)
+- Formatting: 15% (structure, clarity, grammar)
+
+**Analysis Caching:**
+- TTL: 24 hours (resume rarely changes)
+- Cache key: resume:{id}:analysis
+- Invalidated on resume update
+
+**History Tracking:**
+- All analyses stored in DB
+- Allows progress tracking over time
+- User can see score improvements
+end note
+
+@enduml

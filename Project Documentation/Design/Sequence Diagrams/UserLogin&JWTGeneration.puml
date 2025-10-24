@@ -41,7 +41,7 @@ participant "User Service" as UserSvc #004d26
 participant "Auth Service" as AuthSvc #004d26
 participant "JWT Service" as JwtSvc #004d26
 participant "User Repository" as UserRepo #661a1a
-participant "PostgreSQL DB" as DB #661a1a
+participant "MySQL DB" as DB #661a1a
 participant "Redis Cache" as Redis #661a1a
 
 title User Login & JWT Token Generation Flow
@@ -72,9 +72,9 @@ alt User not found
     deactivate UserRepo
     AuthSvc --> UserSvc: Authentication failed
     deactivate AuthSvc
-    UserSvc --> Gateway: 401 Unauthorized\n"Invalid credentials"
+    UserSvc --> Gateway: 401 Unauthorized\n"User Not Found"
     deactivate UserSvc
-    Gateway --> User: Error: Invalid email or password
+    Gateway --> User: Error: User Not Registered
     deactivate Gateway
 else User exists
     DB --> UserRepo: User {id: 123, email, passwordHash, role, status}
@@ -137,6 +137,54 @@ else User exists
             
             JwtSvc --> AuthSvc: {accessToken, refreshToken}
             deactivate JwtSvc
+
+            == Access Token Refresh Flow ==
+
+            User -> Gateway: POST /api/auth/refresh\n{refreshToken}
+            activate Gateway
+
+            Gateway -> JwtSvc: validateRefreshToken(refreshToken)
+            activate JwtSvc
+
+            JwtSvc -> JwtSvc: Verify signature using REFRESH_SECRET_KEY
+            JwtSvc -> JwtSvc: Extract tokenId, userId, exp
+
+            alt Token expired
+                JwtSvc --> Gateway: 401 Unauthorized\n"Refresh token expired"
+                deactivate JwtSvc
+                Gateway --> User: "Session expired. Please login again."
+                deactivate Gateway
+
+            else Token valid
+                JwtSvc -> Redis: GET refresh_token:{tokenId}
+                activate Redis
+
+                alt Token not found in Redis (revoked)
+                    Redis --> JwtSvc: null
+                    deactivate Redis
+                    JwtSvc --> Gateway: 401 Unauthorized\n"Invalid or revoked refresh token"
+                    deactivate JwtSvc
+                    Gateway --> User: "Session expired. Please login again."
+                    deactivate Gateway
+
+                else Token found
+                    Redis --> JwtSvc: {userId, email, issuedAt}
+                    deactivate Redis
+
+                    JwtSvc -> JwtSvc: generateAccessToken(userId, email, role)
+                    JwtSvc -> JwtSvc: Sign with SECRET_KEY\nExpiry: 15 minutes
+                    JwtSvc --> Gateway: {accessToken}
+                    deactivate JwtSvc
+
+                    Gateway --> User: 200 OK\n{newAccessToken}
+                    deactivate Gateway
+
+                    note over User
+                    Access token refreshed successfully.
+                    No need to re-login.
+                    end note
+                end
+            end
             
             == Log Login Activity ==
             

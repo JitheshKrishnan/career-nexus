@@ -43,7 +43,7 @@ actor "Job Seeker" as User #003366
 participant "Gateway Service" as Gateway #4d4d00
 participant "User Service" as UserSvc #004d26
 participant "User Repository" as UserRepo #661a1a
-participant "PostgreSQL DB" as DB #661a1a
+participant "MySQL DB" as DB #661a1a
 participant "Notification Service" as NotifSvc #004d26
 participant "Kafka/RabbitMQ" as Queue #660066
 participant "SendGrid" as Email #660066

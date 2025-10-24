@@ -1,0 +1,246 @@
+@startuml Skills Extraction from Resume (NER Pipeline)
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+participant "Resume Service" as ResumeSvc #004d26
+participant "NLP/AI Service" as NLP #004d26
+participant "Text Preprocessor" as Preprocessor #4d4d00
+participant "NER Model\n(spaCy)" as SpacyNER #660066
+participant "Skill Matcher\n(Regex + ML)" as SkillMatcher #660066
+participant "Skill Normalizer" as SkillNorm #4d4d00
+participant "Proficiency Detector" as ProfDetector #4d4d00
+participant "Skill Database" as SkillDB #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+
+title Skills Extraction from Resume - Detailed NER Pipeline
+
+note over ResumeSvc
+This sequence shows the detailed
+NLP processing pipeline for extracting
+and normalizing skills from resume text.
+
+Triggered during resume parsing (async).
+end note
+
+== Step 1: Send Resume Text to NLP Service ==
+
+ResumeSvc -> NLP: POST /nlp/extract-skills\n{\n  resumeId: 456,\n  fullText: "...",\n  resumeSections: {\n    skills: "Java, Python, Spring Boot...",\n    experience: "Built microservices using Java...",\n    education: "BS Computer Science..."\n  }\n}
+activate NLP
+
+== Step 2: Text Preprocessing ==
+
+NLP -> Preprocessor: preprocessText(resumeText)
+activate Preprocessor
+
+Preprocessor -> Preprocessor: **Step 2.1: Clean Text**\n- Remove extra whitespace\n- Normalize line breaks\n- Remove special characters (keep hyphens in tech terms)\n- Convert to lowercase (for matching)
+
+Preprocessor -> Preprocessor: **Step 2.2: Tokenization**\n- Split into sentences\n- Split sentences into words\n- Preserve compound terms ("machine learning", "full-stack")
+
+Preprocessor -> Preprocessor: **Step 2.3: Section Segmentation**\nIdentify key sections:\n- Skills section\n- Experience descriptions\n- Projects (if present)\n- Education (less relevant for skills)
+
+Preprocessor --> NLP: {cleanedText, tokens, sections}
+deactivate Preprocessor
+
+note right of Preprocessor
+**Preprocessed Output:**
+Sections identified:
+- SKILLS: "java python spring boot react aws docker..."
+- EXPERIENCE: "developed microservices java spring..."
+- PROJECTS: "built full-stack application react node..."
+end note
+
+== Step 3: Named Entity Recognition (NER) ==
+
+NLP -> SpacyNER: extractEntities(cleanedText)
+activate SpacyNER
+
+SpacyNER -> SpacyNER: Load pre-trained model:\nModel: "en_core_web_lg"\n+ Custom NER model (fine-tuned on tech resumes)
+
+SpacyNER -> SpacyNER: **Run NER Pipeline:**\n1. POS tagging (Part-of-Speech)\n2. Dependency parsing\n3. Entity recognition
+
+SpacyNER -> SpacyNER: **Extract entities by type:**\n- SKILL: ["Java", "Python", "Spring Boot", "React"]\n- ORG: ["TechCorp", "AWS", "Google Cloud"]\n- PRODUCT: ["Docker", "Kubernetes", "Jenkins"]\n- TECH: ["Microservices", "REST API", "GraphQL"]
+
+SpacyNER --> NLP: {\n  entities: [\n    {text: "Java", label: "SKILL", confidence: 0.98},\n    {text: "Python", label: "SKILL", confidence: 0.97},\n    {text: "Spring Boot", label: "SKILL", confidence: 0.95},\n    {text: "React", label: "SKILL", confidence: 0.96},\n    {text: "AWS", label: "ORG", confidence: 0.92},\n    ...\n  ]\n}
+deactivate SpacyNER
+
+== Step 4: Skill Matching & Expansion ==
+
+NLP -> SkillMatcher: matchSkills(entities, resumeText)
+activate SkillMatcher
+
+SkillMatcher -> SkillDB: Query skill taxonomy database
+activate SkillDB
+SkillDB -> SkillDB: Skill taxonomy includes:\n- Programming languages\n- Frameworks\n- Tools & platforms\n- Methodologies\n- Soft skills\n- Domain knowledge
+SkillDB --> SkillMatcher: {skillTaxonomy}
+deactivate SkillDB
+
+SkillMatcher -> SkillMatcher: **Regex Pattern Matching:**\nPatterns for common skills:\n- Languages: (Java|Python|JavaScript|C\\+\\+|Go|Rust)\n- Frameworks: (Spring|Django|React|Angular|Vue)\n- Databases: (MySQL|PostgreSQL|MongoDB|Redis)\n- Cloud: (AWS|Azure|GCP|Kubernetes|Docker)
+
+SkillMatcher -> SkillMatcher: **Contextual Matching:**\nLook for skill mentions in context:\n"experienced with Java" → Java skill confirmed\n"5 years of Python" → Python skill confirmed\n"proficient in React" → React skill confirmed
+
+SkillMatcher -> SkillMatcher: **Compound Skill Detection:**\nDetect multi-word skills:\n- "Machine Learning"\n- "Data Science"\n- "Full Stack Development"\n- "API Development"\n- "Test Driven Development"
+
+SkillMatcher -> SkillMatcher: **Synonym & Variation Handling:**\nMap variations to canonical forms:\n- "JS" → "JavaScript"\n- "K8s" → "Kubernetes"\n- "ML" → "Machine Learning"\n- "CI/CD" → "Continuous Integration/Deployment"\n- "Node" → "Node.js"
+
+SkillMatcher --> NLP: {\n  matchedSkills: [\n    {name: "Java", type: "PROGRAMMING_LANGUAGE", confidence: 0.98},\n    {name: "Python", type: "PROGRAMMING_LANGUAGE", confidence: 0.97},\n    {name: "Spring Boot", type: "FRAMEWORK", confidence: 0.95},\n    {name: "React", type: "FRAMEWORK", confidence: 0.96},\n    {name: "AWS", type: "CLOUD_PLATFORM", confidence: 0.92},\n    {name: "Docker", type: "TOOL", confidence: 0.94},\n    {name: "Kubernetes", type: "TOOL", confidence: 0.93},\n    {name: "MySQL", type: "DATABASE", confidence: 0.91},\n    {name: "REST API", type: "METHODOLOGY", confidence: 0.89},\n    {name: "Microservices", type: "ARCHITECTURE", confidence: 0.87},\n    {name: "Agile", type: "METHODOLOGY", confidence: 0.85},\n    {name: "Leadership", type: "SOFT_SKILL", confidence: 0.78}\n  ]\n}
+deactivate SkillMatcher
+
+== Step 5: Skill Normalization ==
+
+NLP -> SkillNorm: normalizeSkills(matchedSkills)
+activate SkillNorm
+
+SkillNorm -> SkillNorm: **Deduplicate skills:**\nRemove duplicates:\n- "JavaScript" and "JS" → keep "JavaScript"\n- "Kubernetes" and "K8s" → keep "Kubernetes"
+
+SkillNorm -> SkillNorm: **Standardize naming:**\n- Proper capitalization: "JAVA" → "Java"\n- Remove version numbers: "Java 11" → "Java"\n- Expand abbreviations: "DB" → "Database"
+
+SkillNorm -> SkillNorm: **Categorize skills:**\nGroup by type:\n- Technical Skills (10): Java, Python, Spring Boot, React, AWS...\n- Soft Skills (2): Leadership, Team Collaboration\n- Tools (3): Docker, Git, Jenkins\n- Methodologies (2): Agile, Scrum
+
+SkillNorm -> SkillNorm: **Remove low-confidence skills:**\nFilter out skills with confidence < 0.70\nRemoved: "Communication" (0.65), "MS Office" (0.62)
+
+SkillNorm --> NLP: {\n  normalizedSkills: [\n    {name: "Java", category: "TECHNICAL", subcategory: "PROGRAMMING_LANGUAGE"},\n    {name: "Python", category: "TECHNICAL", subcategory: "PROGRAMMING_LANGUAGE"},\n    {name: "Spring Boot", category: "TECHNICAL", subcategory: "FRAMEWORK"},\n    {name: "React", category: "TECHNICAL", subcategory: "FRAMEWORK"},\n    {name: "AWS", category: "TECHNICAL", subcategory: "CLOUD_PLATFORM"},\n    {name: "Docker", category: "TECHNICAL", subcategory: "TOOL"},\n    {name: "Kubernetes", category: "TECHNICAL", subcategory: "TOOL"},\n    {name: "MySQL", category: "TECHNICAL", subcategory: "DATABASE"},\n    {name: "REST API", category: "TECHNICAL", subcategory: "METHODOLOGY"},\n    {name: "Microservices", category: "TECHNICAL", subcategory: "ARCHITECTURE"},\n    {name: "Agile", category: "METHODOLOGY", subcategory: "PROCESS"},\n    {name: "Leadership", category: "SOFT_SKILL", subcategory: "MANAGEMENT"}\n  ]\n}
+deactivate SkillNorm
+
+== Step 6: Proficiency Level Detection ==
+
+NLP -> ProfDetector: detectProficiency(normalizedSkills, resumeText)
+activate ProfDetector
+
+ProfDetector -> ProfDetector: **Analyze skill mentions in context:**\n\nFor "Java":\n- Mentions: 8 times\n- Context: "5 years of Java experience"\n- Context: "Expert in Java microservices"\n- Years inferred: 5 years\n→ Proficiency: ADVANCED
+
+ProfDetector -> ProfDetector: For "Python":\n- Mentions: 4 times\n- Context: "worked with Python"\n- Context: "built scripts in Python"\n- Years inferred: 2 years\n→ Proficiency: INTERMEDIATE
+
+ProfDetector -> ProfDetector: For "React":\n- Mentions: 3 times\n- Context: "learning React"\n- Context: "built UI with React"\n- Years inferred: 1 year\n→ Proficiency: BEGINNER
+
+ProfDetector -> ProfDetector: **Proficiency Detection Rules:**\n- EXPERT (5+): Years >= 5, "expert/mastery" keywords\n- ADVANCED (3-5): Years 3-4, "proficient/skilled" keywords\n- INTERMEDIATE (1-3): Years 1-2, "experience/worked with"\n- BEGINNER (<1): "learning/familiar/basic" keywords\n- If no context: Default to INTERMEDIATE
+
+ProfDetector --> NLP: {\n  skillsWithProficiency: [\n    {name: "Java", proficiency: "ADVANCED", yearsOfExperience: 5},\n    {name: "Python", proficiency: "INTERMEDIATE", yearsOfExperience: 2},\n    {name: "Spring Boot", proficiency: "ADVANCED", yearsOfExperience: 4},\n    {name: "React", proficiency: "BEGINNER", yearsOfExperience: 1},\n    {name: "AWS", proficiency: "INTERMEDIATE", yearsOfExperience: 3},\n    {name: "Docker", proficiency: "INTERMEDIATE", yearsOfExperience: 2},\n    {name: "Kubernetes", proficiency: "BEGINNER", yearsOfExperience: 1},\n    {name: "MySQL", proficiency: "ADVANCED", yearsOfExperience: 5},\n    {name: "REST API", proficiency: "ADVANCED", yearsOfExperience: 5},\n    {name: "Microservices", proficiency: "ADVANCED", yearsOfExperience: 4},\n    {name: "Agile", proficiency: "INTERMEDIATE", yearsOfExperience: 3},\n    {name: "Leadership", proficiency: "INTERMEDIATE", yearsOfExperience: null}\n  ]\n}
+deactivate ProfDetector
+
+== Step 7: Return Extracted Skills ==
+
+NLP --> ResumeSvc: 200 OK\n{\n  extractedSkills: [...12 skills with proficiency],\n  skillsByCategory: {\n    technical: 10,\n    soft: 2,\n    methodology: 2\n  },\n  topSkills: ["Java", "Spring Boot", "REST API", "MySQL"],\n  processingTime: "3.2 seconds"\n}
+deactivate NLP
+
+== Step 8: Store Skills in Database ==
+
+ResumeSvc -> DB: BEGIN TRANSACTION
+activate DB
+
+ResumeSvc -> DB: DELETE FROM resume_skills WHERE resume_id = 456
+note right: Clear existing skills before inserting
+
+ResumeSvc -> DB: INSERT INTO resume_skills\n(resume_id, skill_name, skill_category, \nskill_subcategory, proficiency_level, years_of_experience)\nVALUES\n(456, 'Java', 'TECHNICAL', 'PROGRAMMING_LANGUAGE', \n 'ADVANCED', 5),\n(456, 'Python', 'TECHNICAL', 'PROGRAMMING_LANGUAGE', \n 'INTERMEDIATE', 2),\n(456, 'Spring Boot', 'TECHNICAL', 'FRAMEWORK', \n 'ADVANCED', 4),\n... [9 more skills]
+
+ResumeSvc -> DB: COMMIT TRANSACTION
+DB --> ResumeSvc: Skills saved successfully
+deactivate DB
+
+== Step 9: Update Resume Metadata ==
+
+ResumeSvc -> DB: UPDATE resumes\nSET skills_extracted = true,\n    skill_count = 12,\n    top_skills = ARRAY['Java', 'Spring Boot', 'REST API', 'MySQL'],\n    last_skill_extraction = NOW()\nWHERE id = 456
+activate DB
+DB --> ResumeSvc: Metadata updated
+deactivate DB
+
+note over ResumeSvc
+Skills extraction complete!
+Data now available for:
+- Job matching algorithm
+- Skill gap analysis
+- Learning recommendations
+- Profile completeness score
+end note
+
+note over ResumeSvc, DB
+**Extracted Skills Summary:**
+
+Total Skills: 12
+├── Technical: 10
+│   ├── Programming Languages: 2 (Java, Python)
+│   ├── Frameworks: 2 (Spring Boot, React)
+│   ├── Cloud Platforms: 1 (AWS)
+│   ├── Tools: 2 (Docker, Kubernetes)
+│   ├── Databases: 1 (MySQL)
+│   ├── APIs: 1 (REST API)
+│   └── Architecture: 1 (Microservices)
+├── Methodology: 1 (Agile)
+└── Soft Skills: 1 (Leadership)
+
+Proficiency Distribution:
+├── ADVANCED: 5 skills
+├── INTERMEDIATE: 5 skills
+└── BEGINNER: 2 skills
+
+**NLP Pipeline Performance:**
+- Text preprocessing: 0.5s
+- NER extraction: 1.2s
+- Skill matching: 0.8s
+- Normalization: 0.4s
+- Proficiency detection: 0.3s
+- Total: 3.2 seconds
+end note
+
+note over SpacyNER, SkillMatcher
+**Key NLP Techniques:**
+
+1. **Named Entity Recognition (NER)**
+   - spaCy pre-trained model: en_core_web_lg
+   - Custom fine-tuned model on tech resumes
+   - Entity types: SKILL, ORG, PRODUCT, TECH
+
+2. **Regex Pattern Matching**
+   - 500+ predefined skill patterns
+   - Support for abbreviations and variations
+   - Compound term detection (n-grams)
+
+3. **Contextual Analysis**
+   - Analyze surrounding words for confirmation
+   - Detect proficiency indicators (years, keywords)
+   - Infer experience level from context
+
+4. **Skill Taxonomy Database**
+   - 2000+ standardized skill names
+   - Hierarchical categorization
+   - Synonym and variation mappings
+
+5. **Confidence Scoring**
+   - ML-based confidence calculation
+   - Threshold: 0.70 minimum
+   - Higher confidence for explicit mentions
+end note
+
+@enduml

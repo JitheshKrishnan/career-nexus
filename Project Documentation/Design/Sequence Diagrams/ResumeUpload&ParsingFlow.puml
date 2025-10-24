@@ -1,0 +1,255 @@
+@startuml Resume Upload & Parsing Flow
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Resume Service" as ResumeSvc #004d26
+participant "File Validator" as FileVal #4d4d00
+participant "S3/MinIO Storage" as S3 #660066
+participant "Resume Repository" as ResumeRepo #661a1a
+participant "MySQL DB" as DB #661a1a
+participant "Apache Tika" as Tika #660066
+participant "NLP/AI Service" as NLP #004d26
+participant "Redis Cache" as Redis #661a1a
+
+title Resume Upload & Parsing Flow
+
+== Step 1: File Upload ==
+
+User -> Gateway: POST /api/resumes/upload\nContent-Type: multipart/form-data\nFile: resume.pdf (2.3 MB)
+activate Gateway
+
+Gateway -> Gateway: Validate JWT token
+Gateway -> Gateway: Extract userId from token
+Gateway -> ResumeSvc: POST /resumes/upload\n{file, userId: 123}
+activate ResumeSvc
+
+== Step 2: File Validation ==
+
+ResumeSvc -> FileVal: validateFile(file)
+activate FileVal
+
+FileVal -> FileVal: Check file size\nMax: 5 MB\nActual: 2.3 MB ✓
+
+FileVal -> FileVal: Check file type\nAllowed: [.pdf, .docx, .doc]\nActual: .pdf ✓
+
+FileVal -> FileVal: Check MIME type\nExpected: application/pdf\nActual: application/pdf ✓
+
+FileVal -> FileVal: Scan for malware\n(basic signature check)
+
+alt File validation fails
+    FileVal --> ResumeSvc: ValidationException\n"Invalid file type or size exceeded"
+    deactivate FileVal
+    ResumeSvc --> Gateway: 400 Bad Request\n"File validation failed"
+    deactivate ResumeSvc
+    Gateway --> User: Error: Invalid file
+    deactivate Gateway
+else File validation succeeds
+    FileVal --> ResumeSvc: File valid ✓
+    deactivate FileVal
+    
+    == Step 3: Generate Unique Filename & Store in S3 ==
+    
+    ResumeSvc -> ResumeSvc: Generate unique filename\nfilename = userId_timestamp_uuid.pdf\n= "123_1698765432_abc123.pdf"
+    
+    ResumeSvc -> S3: PUT /resumes/123_1698765432_abc123.pdf\n{fileData, metadata}
+    activate S3
+    S3 -> S3: Store file in bucket: "career-nexus-resumes"
+    S3 --> ResumeSvc: {fileUrl, bucket, key}\nfileUrl: "s3://career-nexus-resumes/123_1698765432_abc123.pdf"
+    deactivate S3
+    
+    == Step 4: Create Resume Metadata ==
+    
+    ResumeSvc -> ResumeRepo: save(resumeMetadata)
+    activate ResumeRepo
+    ResumeRepo -> DB: INSERT INTO resumes\n(user_id, file_name, file_url, file_type, file_size, \nupload_date, parse_status)\nVALUES (123, 'resume.pdf', 's3://...', 'PDF', 2.3MB, \nNOW(), 'PENDING')
+    activate DB
+    DB --> ResumeRepo: Resume ID = 456
+    deactivate DB
+    ResumeRepo --> ResumeSvc: Resume metadata saved (id: 456)
+    deactivate ResumeRepo
+    
+    ResumeSvc --> Gateway: 202 Accepted\n{resumeId: 456, status: "PENDING", \nmessage: "Upload successful. Parsing in progress..."}
+    deactivate ResumeSvc
+    Gateway --> User: ✓ Resume uploaded!\nParsing in background...
+    deactivate Gateway
+end
+
+== Step 5: Background Parsing (Async) ==
+
+note over ResumeSvc
+Parsing happens asynchronously
+in a background worker thread
+or via task queue (Celery/Spring Async)
+end note
+
+ResumeSvc -> ResumeSvc: Start async parsing job\n@Async parseResume(resumeId: 456)
+activate ResumeSvc
+
+ResumeSvc -> ResumeRepo: updateParseStatus(456, "IN_PROGRESS")
+activate ResumeRepo
+ResumeRepo -> DB: UPDATE resumes\nSET parse_status = 'IN_PROGRESS'\nWHERE id = 456
+activate DB
+DB --> ResumeRepo: Updated
+deactivate DB
+deactivate ResumeRepo
+
+== Step 6: Text Extraction with Apache Tika ==
+
+ResumeSvc -> S3: GET /resumes/123_1698765432_abc123.pdf
+activate S3
+S3 --> ResumeSvc: File binary data
+deactivate S3
+
+ResumeSvc -> Tika: POST /tika\nContent-Type: application/pdf\n{fileBinary}
+activate Tika
+
+Tika -> Tika: Detect document type: PDF
+Tika -> Tika: Extract text using PDFBox parser
+Tika -> Tika: Extract metadata:\n- Author, Creation date, Page count
+
+Tika --> ResumeSvc: {extractedText, metadata}
+deactivate Tika
+
+note right of Tika
+**Extracted Text Example:**
+"John Doe
+john.doe@email.com | +1-234-567-8900
+Software Engineer with 5 years experience...
+
+SKILLS
+Java, Python, Spring Boot, React, AWS...
+
+EXPERIENCE
+Senior Developer at TechCorp (2020-2023)
+- Led team of 5 developers
+- Built microservices architecture..."
+end note
+
+== Step 7: NLP Processing & Data Extraction ==
+
+ResumeSvc -> NLP: POST /nlp/parse-resume\n{text: extractedText, resumeId: 456}
+activate NLP
+
+NLP -> NLP: Preprocess text:\n- Clean whitespace\n- Normalize encoding\n- Tokenize sentences
+
+NLP -> NLP: Named Entity Recognition (NER):\n- Extract contact info (email, phone)\n- Extract person name\n- Extract companies\n- Extract dates
+
+NLP -> NLP: Section Classification:\n- Identify "Skills" section\n- Identify "Experience" section\n- Identify "Education" section\n- Identify "Certifications" section
+
+NLP -> NLP: Skills Extraction:\nModel: spaCy NER + Regex patterns\n- Technical skills: [Java, Python, Spring Boot, React, AWS]\n- Soft skills: [Leadership, Team collaboration]\n- Tools: [Git, Docker, Jenkins]
+
+NLP -> NLP: Experience Parsing:\nCompany: "TechCorp"\nTitle: "Senior Developer"\nDuration: "2020-2023" (3 years)\nResponsibilities: ["Led team", "Built microservices"]
+
+NLP -> NLP: Education Parsing:\nInstitution: "State University"\nDegree: "Bachelor of Science"\nField: "Computer Science"\nGraduation: "2018"
+
+NLP -> NLP: Calculate experience level:\nTotal years = 5\nLevel = "MID" (3-7 years)
+
+NLP --> ResumeSvc: {parsedData}\n{\n  contactInfo: {name, email, phone},\n  skills: ["Java", "Python", "Spring Boot", ...],\n  experience: [{company, title, duration, duties}],\n  education: [{institution, degree, field}],\n  certifications: ["AWS Certified"],\n  summary: "Software Engineer with 5 years...",\n  experienceLevel: "MID"\n}
+deactivate NLP
+
+== Step 8: Store Parsed Data ==
+
+ResumeSvc -> ResumeRepo: saveParsedData(resumeId: 456, parsedData)
+activate ResumeRepo
+
+ResumeRepo -> DB: INSERT INTO resume_contact_info\n(resume_id, name, email, phone)\nVALUES (456, 'John Doe', 'john.doe@email.com', '+1-234-567-8900')
+activate DB
+DB --> ResumeRepo: Contact info saved
+deactivate DB
+
+ResumeRepo -> DB: INSERT INTO resume_skills\n(resume_id, skill_name, skill_type, proficiency)\nVALUES (456, 'Java', 'TECHNICAL', 'ADVANCED'),\n       (456, 'Python', 'TECHNICAL', 'INTERMEDIATE'), ...
+activate DB
+DB --> ResumeRepo: Skills saved
+deactivate DB
+
+ResumeRepo -> DB: INSERT INTO resume_experience\n(resume_id, company, title, start_date, end_date, \nresponsibilities)\nVALUES (456, 'TechCorp', 'Senior Developer', \n'2020-01-01', '2023-12-31', '["Led team", ...]')
+activate DB
+DB --> ResumeRepo: Experience saved
+deactivate DB
+
+ResumeRepo -> DB: INSERT INTO resume_education\n(resume_id, institution, degree, field, graduation_year)\nVALUES (456, 'State University', 'Bachelor of Science', \n'Computer Science', 2018)
+activate DB
+DB --> ResumeRepo: Education saved
+deactivate DB
+
+ResumeRepo -> DB: UPDATE resumes\nSET parse_status = 'COMPLETED',\n    parsed_at = NOW(),\n    full_text = ?,\n    summary = ?,\n    experience_level = 'MID'\nWHERE id = 456
+activate DB
+DB --> ResumeRepo: Resume updated
+deactivate DB
+
+deactivate ResumeRepo
+
+== Step 9: Cache Parsed Data ==
+
+ResumeSvc -> Redis: SET resume:456:parsed\nVALUE: {parsedData JSON}\nTTL: 1 hour
+activate Redis
+Redis --> ResumeSvc: Cached
+deactivate Redis
+
+== Step 10: Completion & Notification ==
+
+ResumeSvc -> ResumeSvc: Log parsing success\nLatency: 8.5 seconds
+
+note over User
+User can now:
+1. View parsed resume data
+2. Get job recommendations based on skills
+3. Receive skill gap analysis
+4. Generate learning paths
+end note
+
+deactivate ResumeSvc
+
+note over User, Redis
+**Parsing Pipeline Summary:**
+1. Upload (1s) → Validate → S3 storage
+2. Metadata saved → Status: PENDING
+3. Background job triggered
+4. Text extraction via Tika (2s)
+5. NLP processing via AI service (5s)
+6. Store parsed data in PostgreSQL (1s)
+7. Cache in Redis for fast access
+8. Total time: ~8-10 seconds
+
+**Error Handling:**
+- If Tika fails → Retry 3 times → Mark as FAILED
+- If NLP fails → Store raw text → Manual review
+- Parse status: PENDING → IN_PROGRESS → COMPLETED/FAILED
+end note
+
+@enduml
