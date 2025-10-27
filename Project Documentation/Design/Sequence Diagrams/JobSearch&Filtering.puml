@@ -1,0 +1,301 @@
+@startuml Job Search & Filtering
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Job Matcher Service" as JobMatcherSvc #004d26
+participant "Search Service" as SearchSvc #004d26
+participant "Job Repository" as JobRepo #661a1a
+participant "Elasticsearch" as ES #660066
+participant "PostgreSQL DB" as DB #661a1a
+participant "External Job APIs\n(LinkedIn/Indeed)" as JobAPIs #660066
+participant "Redis Cache" as Redis #661a1a
+
+title Job Search & Filtering Flow
+
+== Step 1: Search Request ==
+
+User -> Gateway: GET /api/jobs/search?keyword=Java Developer\n&location=Remote&experienceLevel=MID\n&jobType=FULL_TIME&page=1&size=20
+activate Gateway
+
+Gateway -> Gateway: Validate JWT token\nExtract userId from token
+
+Gateway -> JobMatcherSvc: GET /jobs/search?keyword=...\n&location=...&filters=...&userId=123
+activate JobMatcherSvc
+
+== Step 2: Check Cache ==
+
+JobMatcherSvc -> JobMatcherSvc: Generate cache key:\nkey = "job_search:java_developer:remote:mid:full_time:1:20"
+
+JobMatcherSvc -> Redis: GET job_search:{cacheKey}
+activate Redis
+
+alt Cache hit (recent search)
+    Redis --> JobMatcherSvc: {cachedResults, totalCount, facets}
+    deactivate Redis
+    
+    JobMatcherSvc --> Gateway: 200 OK\n{jobs: [...], total: 145, facets: {...}}
+    deactivate JobMatcherSvc
+    Gateway --> User: Search results (from cache)
+    deactivate Gateway
+    
+else Cache miss
+    Redis --> JobMatcherSvc: null
+    deactivate Redis
+    
+    == Step 3: Build Search Query ==
+    
+    JobMatcherSvc -> SearchSvc: buildSearchQuery(filters)
+    activate SearchSvc
+    
+    SearchSvc -> SearchSvc: **Parse keyword:** "Java Developer"\nExtract terms: ["Java", "Developer"]\nSynonyms: ["Java", "J2EE", "Spring"]\nRelated: ["Backend", "Software Engineer"]
+    
+    SearchSvc -> SearchSvc: **Build Elasticsearch Query:**\n{\n  "query": {\n    "bool": {\n      "must": [\n        {"multi_match": {\n          "query": "Java Developer",\n          "fields": ["title^3", "description^2", "skills"],\n          "type": "best_fields"\n        }}\n      ],\n      "filter": [\n        {"term": {"location.type": "Remote"}},\n        {"term": {"experienceLevel": "MID"}},\n        {"term": {"jobType": "FULL_TIME"}},\n        {"term": {"isActive": true}}\n      ],\n      "should": [\n        {"match": {"skills": "Spring"}},\n        {"match": {"skills": "Microservices"}}\n      ]\n    }\n  },\n  "from": 0,\n  "size": 20,\n  "sort": [{"postedDate": "desc"}, {"_score": "desc"}]\n}
+    
+    SearchSvc --> JobMatcherSvc: {elasticsearchQuery}
+    deactivate SearchSvc
+    
+    == Step 4: Query Elasticsearch ==
+    
+    JobMatcherSvc -> ES: POST /_search\n{query: {...}}
+    activate ES
+    
+    ES -> ES: Execute search query\nIndex: "jobs"\nShard distribution: 3 shards
+    
+    ES -> ES: **Full-text search:**\n- Match "Java" in title (score boost: 3x)\n- Match "Developer" in description (score boost: 2x)\n- Match terms in skills field
+    
+    ES -> ES: **Apply filters:**\n✓ location.type = "Remote": 1,234 jobs\n✓ experienceLevel = "MID": 456 jobs\n✓ jobType = "FULL_TIME": 234 jobs\n✓ isActive = true: 145 jobs
+    
+    ES -> ES: **Apply boosting:**\n- Jobs with "Spring" skill: +10% score\n- Jobs with "Microservices": +10% score\n- Recently posted (< 7 days): +20% score
+    
+    ES -> ES: **Sort results:**\n1. By relevance score (descending)\n2. By posted date (descending)
+    
+    ES -> ES: **Aggregate facets:**\n- By location: {Remote: 145, New York: 23, ...}\n- By company: {TechCorp: 12, StartupX: 8, ...}\n- By salary range: {50k-70k: 34, 70k-90k: 56, ...}
+    
+    ES --> JobMatcherSvc: {\n  hits: {\n    total: {value: 145},\n    hits: [{_id, _score, _source}, ...20 jobs]\n  },\n  aggregations: {\n    locations: {...},\n    companies: {...},\n    salaryRanges: {...}\n  }\n}
+    deactivate ES
+    
+    == Step 5: Enrich Job Data from PostgreSQL ==
+    
+    JobMatcherSvc -> JobMatcherSvc: Extract job IDs from ES results:\njobIds = [1, 5, 12, 23, 34, ...]
+    
+    JobMatcherSvc -> JobRepo: findByIdIn(jobIds)
+    activate JobRepo
+    JobRepo -> DB: SELECT j.*, c.logo_url, c.rating\nFROM jobs j\nLEFT JOIN companies c ON j.company_id = c.id\nWHERE j.id IN (1, 5, 12, 23, 34, ...)\nORDER BY FIELD(j.id, 1, 5, 12, ...)
+    activate DB
+    note right: Preserve Elasticsearch order
+    DB --> JobRepo: Job records with company data
+    deactivate DB
+    JobRepo --> JobMatcherSvc: {enrichedJobs}
+    deactivate JobRepo
+    
+    == Step 6: Fetch External Jobs (If Needed) ==
+    
+    alt Internal jobs < 20 (supplement with external)
+        JobMatcherSvc -> JobAPIs: GET /jobs?q=Java Developer\n&location=Remote&experience=mid-level
+        activate JobAPIs
+        
+        JobAPIs -> JobAPIs: Query LinkedIn Jobs API\nQuery Indeed API\nQuery Glassdoor API
+        
+        JobAPIs --> JobMatcherSvc: {\n  externalJobs: [\n    {source: "LinkedIn", title: "...", company: "..."},\n    {source: "Indeed", title: "...", company: "..."},\n    ...\n  ]\n}
+        deactivate JobAPIs
+        
+        JobMatcherSvc -> JobMatcherSvc: Merge external jobs with internal\nDeduplicate by (title + company)\nMaintain relevance order
+    end
+    
+    == Step 7: Apply User Preferences (Optional) ==
+    
+    alt User is authenticated
+        JobMatcherSvc -> JobRepo: getUserPreferences(userId)
+        activate JobRepo
+        JobRepo -> DB: SELECT * FROM user_job_preferences\nWHERE user_id = 123
+        activate DB
+        DB --> JobRepo: {preferredLocations: ["Remote", "NYC"],\n preferredCompanies: ["Google", "Amazon"],\n salaryExpectation: 80000}
+        deactivate DB
+        JobRepo --> JobMatcherSvc: {preferences}
+        deactivate JobRepo
+        
+        JobMatcherSvc -> JobMatcherSvc: Boost jobs matching preferences:\n- Preferred locations: +15% score\n- Preferred companies: +20% score\n- Salary >= expectation: +10% score
+    end
+    
+    == Step 8: Format Response ==
+    
+    JobMatcherSvc -> JobMatcherSvc: Format job results:\nFor each job:\n{\n  id: 1,\n  title: "Senior Java Developer",\n  company: {\n    name: "TechCorp",\n    logo: "https://...",\n    rating: 4.5\n  },\n  location: {type: "Remote", city: null},\n  jobType: "FULL_TIME",\n  experienceLevel: "MID",\n  salaryRange: "$80,000 - $120,000",\n  skills: ["Java", "Spring Boot", "Microservices"],\n  postedDate: "2025-10-20",\n  daysAgo: 5,\n  applicationUrl: "https://...",\n  relevanceScore: 0.87,\n  matchScore: null (requires user resume)\n}
+    
+    JobMatcherSvc -> JobMatcherSvc: Prepare pagination metadata:\n{\n  page: 1,\n  size: 20,\n  totalResults: 145,\n  totalPages: 8,\n  hasNext: true,\n  hasPrevious: false\n}
+    
+    JobMatcherSvc -> JobMatcherSvc: Prepare facets for filtering:\n{\n  locations: [\n    {value: "Remote", count: 145},\n    {value: "New York", count: 23},\n    {value: "San Francisco", count: 18}\n  ],\n  companies: [\n    {value: "TechCorp", count: 12},\n    {value: "StartupX", count: 8}\n  ],\n  experienceLevels: [\n    {value: "ENTRY", count: 34},\n    {value: "MID", count: 145},\n    {value: "SENIOR", count: 67}\n  ],\n  salaryRanges: [\n    {value: "$50k-$70k", count: 34},\n    {value: "$70k-$90k", count: 56},\n    {value: "$90k-$120k", count: 45},\n    {value: "$120k+", count: 10}\n  ]\n}
+    
+    == Step 9: Cache Results ==
+    
+    JobMatcherSvc -> Redis: SETEX job_search:{cacheKey}\nVALUE: {jobs, pagination, facets}\nTTL: 15 minutes
+    activate Redis
+    Redis --> JobMatcherSvc: Cached
+    deactivate Redis
+    
+    note right of Redis
+    Cache TTL: 15 minutes
+    (job postings don't change frequently)
+    
+    Cache invalidation triggers:
+    - New job posted
+    - Job updated
+    - Job deleted/expired
+    end note
+    
+    JobMatcherSvc --> Gateway: 200 OK\n{\n  jobs: [...20 jobs],\n  pagination: {...},\n  facets: {...},\n  searchTime: "243ms"\n}
+    deactivate JobMatcherSvc
+    
+    Gateway --> User: ✓ Search results\n145 jobs found for "Java Developer"
+    deactivate Gateway
+end
+
+== Job Recommendation Request ==
+
+User -> Gateway: GET /api/jobs/recommendations
+activate Gateway
+
+Gateway -> JobMatcherSvc: GET /jobs/recommendations?userId=123
+activate JobMatcherSvc
+
+== Step 1: Fetch User Skills ==
+JobMatcherSvc -> UserSvc: GET /users/123/skills
+activate UserSvc
+UserSvc -> DB: SELECT skills, preferred_role FROM user_profile WHERE user_id=123
+activate DB
+DB --> UserSvc: {skills:["Python","Django","REST"], preferredRole:"Backend Developer"}
+deactivate DB
+UserSvc --> JobMatcherSvc: {skills, preferredRole}
+deactivate UserSvc
+
+== Step 2: Fetch Jobs from DB ==
+JobMatcherSvc -> JobRepo: findJobsBySkills(skills, preferredRole)
+activate JobRepo
+JobRepo -> DB: SELECT j.*, c.name, c.logo_url\nFROM jobs j LEFT JOIN companies c ON j.company_id=c.id\nWHERE j.title ILIKE '%Backend%' OR j.skills && ARRAY['Python','Django','REST']
+activate DB
+DB --> JobRepo: {jobs: [...matching jobs...]}
+deactivate DB
+JobRepo --> JobMatcherSvc: {jobs}
+deactivate JobRepo
+
+alt Internal results < 20
+    JobMatcherSvc -> JobAPIs: Fetch external jobs (Indeed/LinkedIn)
+    activate JobAPIs
+    JobAPIs --> JobMatcherSvc: {externalJobs}
+    deactivate JobAPIs
+    JobMatcherSvc -> JobMatcherSvc: Merge + Deduplicate jobs
+end
+
+== Step 3: Apply User Preferences ==
+JobMatcherSvc -> JobRepo: getUserPreferences(userId)
+activate JobRepo
+JobRepo -> DB: SELECT * FROM user_job_preferences WHERE user_id=123
+activate DB
+DB --> JobRepo: {preferredLocations:["Remote"], salaryExpectation:80000}
+deactivate DB
+JobRepo --> JobMatcherSvc: {preferences}
+deactivate JobRepo
+
+JobMatcherSvc -> JobMatcherSvc: Re-rank jobs based on preferences
+
+== Step 4: Cache and Respond ==
+JobMatcherSvc -> Redis: SETEX job_recommendations:{userId}\nTTL: 30 min
+activate Redis
+Redis --> JobMatcherSvc: Cached
+deactivate Redis
+
+JobMatcherSvc --> Gateway: 200 OK\n{recommendedJobs:[...]}
+deactivate JobMatcherSvc
+Gateway --> User: Recommended jobs fetched successfully
+deactivate Gateway
+
+note over User
+**Search Results Display:**
+
+Showing 1-20 of 145 jobs
+
+[1] Senior Java Developer - TechCorp
+    📍 Remote | 💰 $80k-$120k | ⏰ Posted 5 days ago
+    Skills: Java, Spring Boot, Microservices
+    Relevance: 87%
+
+[2] Backend Java Engineer - StartupX
+    📍 Remote | 💰 $70k-$100k | ⏰ Posted 3 days ago
+    Skills: Java, AWS, Docker
+    Relevance: 84%
+
+**Filters Applied:**
+✓ Keyword: Java Developer
+✓ Location: Remote
+✓ Experience: Mid-level
+✓ Job Type: Full-time
+
+**Refine By:**
+📍 Location: Remote (145), NYC (23), SF (18)
+🏢 Company: TechCorp (12), StartupX (8)
+💰 Salary: $70k-$90k (56), $90k-$120k (45)
+end note
+
+note over User, Redis
+**Search Architecture:**
+
+**Elasticsearch Benefits:**
+- Full-text search with relevance scoring
+- Fast aggregations for facets
+- Fuzzy matching and typo tolerance
+- Synonym handling (Java = J2EE)
+- Near real-time search updates
+
+**Multi-source Strategy:**
+1. Internal jobs (PostgreSQL + Elasticsearch)
+2. External APIs (LinkedIn, Indeed, Glassdoor)
+3. Merge and deduplicate
+4. Apply user preferences boost
+
+**Performance:**
+- Elasticsearch query: ~50ms
+- PostgreSQL enrichment: ~30ms
+- External API calls: ~150ms (parallel)
+- Total: ~240ms average
+
+**Caching:**
+- TTL: 15 minutes
+- Invalidation: On job CRUD operations
+- Cache hit rate: ~60-70%
+end note
+
+@enduml

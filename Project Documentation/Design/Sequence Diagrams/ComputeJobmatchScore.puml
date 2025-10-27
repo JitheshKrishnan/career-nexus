@@ -1,0 +1,298 @@
+@startuml Compute Job Match Score
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Job Matcher Service" as JobMatcherSvc #004d26
+participant "Matching Engine" as MatchEngine #004d26
+participant "Resume Service" as ResumeSvc #004d26
+participant "NLP/AI Service" as NLP #004d26
+participant "Job Repository" as JobRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "Redis Cache" as Redis #661a1a
+
+title Compute Job Match Score (Detailed Algorithm)
+
+== Step 1: Request Match Score ==
+
+User -> Gateway: GET /api/jobs/{jobId}/match\nAuthorization: Bearer {accessToken}
+activate Gateway
+
+Gateway -> Gateway: Validate JWT\nExtract userId: 123
+
+Gateway -> JobMatcherSvc: GET /jobs/{jobId}/match?userId=123
+activate JobMatcherSvc
+
+== Step 2: Check Cached Match Score ==
+
+JobMatcherSvc -> JobMatcherSvc: Generate cache key:\nkey = "match_score:user_123:job_456"
+
+JobMatcherSvc -> Redis: GET match_score:{key}
+activate Redis
+
+alt Cache hit
+    Redis --> JobMatcherSvc: {matchScore, breakdown, timestamp}
+    deactivate Redis
+    JobMatcherSvc --> Gateway: 200 OK\n{matchData from cache}
+    deactivate JobMatcherSvc
+    Gateway --> User: Match score (cached)
+    deactivate Gateway
+else Cache miss
+    Redis --> JobMatcherSvc: null
+    deactivate Redis
+    
+    == Step 3: Fetch Job Requirements ==
+    
+    JobMatcherSvc -> JobRepo: findById(jobId)
+    activate JobRepo
+    JobRepo -> DB: SELECT * FROM jobs WHERE id = 456
+    activate DB
+    DB --> JobRepo: Job {title, description, requiredSkills, \npreferredSkills, experienceLevel, location}
+    deactivate DB
+    JobRepo --> JobMatcherSvc: Job data
+    deactivate JobRepo
+    
+    note right of JobMatcherSvc
+    **Job Requirements:**
+    Title: "Senior Java Developer"
+    Required Skills: ["Java", "Spring Boot", "MySQL", "REST API"]
+    Preferred Skills: ["Docker", "Kubernetes", "AWS"]
+    Experience Level: "MID" (3-5 years)
+    Location: "Remote"
+    end note
+    
+    == Step 4: Fetch User Resume Data ==
+    
+    JobMatcherSvc -> ResumeSvc: GET /resumes/user/{userId}/latest
+    activate ResumeSvc
+    
+    ResumeSvc -> ResumeSvc: Get user's most recent resume
+    ResumeSvc -> DB: SELECT r.*, rs.skill_name, rs.proficiency_level\nFROM resumes r\nJOIN resume_skills rs ON r.id = rs.resume_id\nWHERE r.user_id = 123 AND r.parse_status = 'COMPLETED'\nORDER BY r.uploaded_at DESC LIMIT 1
+    activate DB
+    DB --> ResumeSvc: Resume + Skills
+    deactivate DB
+    
+    ResumeSvc --> JobMatcherSvc: {\n  resumeId: 789,\n  skills: ["Java", "Python", "Spring Boot", "React", \n           "MySQL", "Docker", "Git"],\n  experienceYears: 4,\n  experienceLevel: "MID",\n  location: "Remote",\n  summary: "...",\n  topSkills: ["Java", "Spring Boot", "MySQL"]\n}
+    deactivate ResumeSvc
+    
+    note right of ResumeSvc
+    **User Resume Data:**
+    Skills: 7 total
+    - Technical: Java, Python, Spring Boot, MySQL, Docker
+    - Tools: Git, React
+    Experience: 4 years
+    Level: MID
+    Location: Remote
+    end note
+    
+    == Step 5: Skill Matching Analysis ==
+    
+    JobMatcherSvc -> MatchEngine: computeSkillMatch(resumeSkills, jobSkills)
+    activate MatchEngine
+    
+    MatchEngine -> MatchEngine: **Extract skills for comparison:**\nJob required: ["Java", "Spring Boot", "MySQL", "REST API"]\nJob preferred: ["Docker", "Kubernetes", "AWS"]\nResume skills: ["Java", "Python", "Spring Boot", "React", \n                "MySQL", "Docker", "Git"]
+    
+    MatchEngine -> NLP: POST /nlp/semantic-skill-match\n{\n  resumeSkills: [...],\n  jobRequiredSkills: [...],\n  jobPreferredSkills: [...]\n}
+    activate NLP
+    
+    NLP -> NLP: **Semantic Similarity Matching:**\nCompare each job skill with resume skills\nusing embeddings & cosine similarity
+    
+    NLP -> NLP: Required Skills Analysis:\n\n"Java" vs Resume:\n- "Java" (exact match): similarity = 1.00 ✓\n\n"Spring Boot" vs Resume:\n- "Spring Boot" (exact match): similarity = 1.00 ✓\n\n"MySQL" vs Resume:\n- "MySQL" (exact match): similarity = 1.00 ✓\n\n"REST API" vs Resume:\n- No exact match\n- Closest: "API Development" (not in resume)\n- Similarity < 0.75 ✗
+    
+    NLP -> NLP: Preferred Skills Analysis:\n\n"Docker" vs Resume:\n- "Docker" (exact match): similarity = 1.00 ✓\n\n"Kubernetes" vs Resume:\n- No match: similarity = 0.45 ✗\n\n"AWS" vs Resume:\n- No match: similarity = 0.32 ✗
+    
+    NLP --> MatchEngine: {\n  requiredMatched: ["Java", "Spring Boot", "MySQL"],\n  requiredMissing: ["REST API"],\n  requiredMatchRate: 0.75 (3/4),\n  preferredMatched: ["Docker"],\n  preferredMissing: ["Kubernetes", "AWS"],\n  preferredMatchRate: 0.33 (1/3)\n}
+    deactivate NLP
+    
+    MatchEngine -> MatchEngine: **Calculate Skill Match Score:**\n\nRequired skills weight: 70%\nPreferred skills weight: 30%\n\nRequired match rate: 75% (3/4 matched)\nPreferred match rate: 33% (1/3 matched)\n\n**Skill Score = (0.75 × 0.70) + (0.33 × 0.30)**\n**Skill Score = 0.525 + 0.099 = 0.624**\n**Skill Score = 62.4%**
+    
+    MatchEngine --> JobMatcherSvc: {skillMatchScore: 62.4%, \n matchedSkills, missingSkills}
+    deactivate MatchEngine
+    
+    == Step 6: Experience Level Matching ==
+    
+    JobMatcherSvc -> MatchEngine: computeExperienceMatch(userExp, jobExp)
+    activate MatchEngine
+    
+    MatchEngine -> MatchEngine: **Experience Comparison:**\nJob requires: "MID" (3-5 years)\nUser has: 4 years (MID level)\n\n✓ Experience level matches exactly\n**Experience Score = 100%**
+    
+    alt Experience matches
+        MatchEngine -> MatchEngine: Score: 100%
+    else Experience lower
+        MatchEngine -> MatchEngine: Penalty: -20% to -50%\n(e.g., ENTRY applying for SENIOR)
+    else Experience higher
+        MatchEngine -> MatchEngine: Slight penalty: -10%\n(overqualified)
+    end
+    
+    MatchEngine --> JobMatcherSvc: {experienceScore: 100%}
+    deactivate MatchEngine
+    
+    == Step 7: Location Matching ==
+    
+    JobMatcherSvc -> MatchEngine: computeLocationMatch(userLoc, jobLoc)
+    activate MatchEngine
+    
+    MatchEngine -> MatchEngine: **Location Comparison:**\nJob location: "Remote"\nUser location: "Remote"\n\n✓ Exact match\n**Location Score = 100%**
+    
+    alt Exact match (Remote = Remote, or City = City)
+        MatchEngine -> MatchEngine: Score: 100%
+    else Different cities in same state
+        MatchEngine -> MatchEngine: Score: 75%
+    else Different states, same country
+        MatchEngine -> MatchEngine: Score: 50%
+    else Different countries
+        MatchEngine -> MatchEngine: Score: 0%
+    end
+    
+    MatchEngine --> JobMatcherSvc: {locationScore: 100%}
+    deactivate MatchEngine
+    
+    == Step 8: Title Similarity ==
+    
+    JobMatcherSvc -> NLP: POST /nlp/title-similarity\n{\n  userTitle: "Software Engineer",\n  jobTitle: "Senior Java Developer"\n}
+    activate NLP
+    
+    NLP -> NLP: Generate embeddings for both titles
+    NLP -> NLP: Calculate cosine similarity:\nsim("Software Engineer", "Senior Java Developer")\n= 0.78
+    
+    NLP --> JobMatcherSvc: {titleSimilarity: 0.78}
+    deactivate NLP
+    
+    JobMatcherSvc -> JobMatcherSvc: **Title Score = 78%**
+    
+    == Step 9: Calculate Overall Match Score ==
+    
+    JobMatcherSvc -> MatchEngine: calculateOverallScore(allScores)
+    activate MatchEngine
+    
+    MatchEngine -> MatchEngine: **Apply Weighted Formula:**\n\n**Match Score = **\n  **(Skills × 50%) +**\n  **(Experience × 20%) +**\n  **(Location × 15%) +**\n  **(Title Similarity × 10%) +**\n  **(Other Factors × 5%)**\n\nSubstitute values:\n= (62.4% × 0.50) + (100% × 0.20) + (100% × 0.15) \n  + (78% × 0.10) + (80% × 0.05)\n\n= 31.2% + 20% + 15% + 7.8% + 4%\n\n**= 78%**
+    
+    note right of MatchEngine
+    **Other Factors (5%):**
+    - Resume quality: 90%
+    - Profile completeness: 85%
+    - Recent activity: 70%
+    Average: 80%
+    end note
+    
+    MatchEngine -> MatchEngine: **Determine Match Grade:**\n- 90-100%: Excellent Match ⭐⭐⭐⭐⭐\n- 75-89%: Good Match ⭐⭐⭐⭐\n- 60-74%: Fair Match ⭐⭐⭐\n- 40-59%: Poor Match ⭐⭐\n- 0-39%: Not a Match ⭐\n\n**Result: 78% = Good Match ⭐⭐⭐⭐**
+    
+    MatchEngine --> JobMatcherSvc: {overallScore: 78%, grade: "GOOD_MATCH"}
+    deactivate MatchEngine
+    
+    == Step 10: Generate Match Report ==
+    
+    JobMatcherSvc -> JobMatcherSvc: Compile match report:\n{\n  matchScore: 78,\n  matchGrade: "GOOD_MATCH",\n  breakdown: {\n    skillsMatch: 62.4,\n    experienceMatch: 100,\n    locationMatch: 100,\n    titleSimilarity: 78,\n    otherFactors: 80\n  },\n  matchedSkills: ["Java", "Spring Boot", "MySQL", "Docker"],\n  missingRequiredSkills: ["REST API"],\n  missingPreferredSkills: ["Kubernetes", "AWS"],\n  strengths: [\n    "Experience level matches perfectly",\n    "Location preference aligned",\n    "Strong core technical skills"\n  ],\n  recommendations: [\n    "Learn REST API development to improve match",\n    "Consider AWS certification",\n    "Gain Kubernetes experience"\n  ]\n}
+    
+    == Step 11: Cache Match Score ==
+    
+    JobMatcherSvc -> Redis: SETEX match_score:user_123:job_456\nVALUE: {matchReport JSON}\nTTL: 1 hour
+    activate Redis
+    Redis --> JobMatcherSvc: Cached
+    deactivate Redis
+    
+    == Step 12: Store Match History ==
+    
+    JobMatcherSvc -> DB: INSERT INTO match_history\n(user_id, job_id, match_score, matched_skills, \nmissing_skills, computed_at)\nVALUES (123, 456, 78, ARRAY[...], ARRAY[...], NOW())
+    activate DB
+    DB --> JobMatcherSvc: Match history saved
+    deactivate DB
+    
+    JobMatcherSvc --> Gateway: 200 OK\n{matchReport}
+    deactivate JobMatcherSvc
+    
+    Gateway --> User: ✓ Match Score Calculated
+    deactivate Gateway
+end
+
+note over User
+**Match Score Display:**
+
+🎯 Match Score: 78% (Good Match) ⭐⭐⭐⭐
+
+**Breakdown:**
+✅ Skills Match: 62% (3/4 required, 1/3 preferred)
+✅ Experience: 100% (Perfect match)
+✅ Location: 100% (Remote = Remote)
+✅ Title Similarity: 78%
+
+**Your Strengths:**
+• Experience level matches perfectly
+• Location preference aligned
+• Strong core Java/Spring Boot skills
+
+**Skills You Have:**
+✓ Java ✓ Spring Boot ✓ MySQL ✓ Docker
+
+**Skills to Learn:**
+❌ REST API (Required)
+❌ Kubernetes (Preferred)
+❌ AWS (Preferred)
+
+**Recommendations:**
+1. Learn REST API development (High Priority)
+2. Complete AWS certification (Medium Priority)
+3. Get hands-on with Kubernetes (Medium Priority)
+end note
+
+note over User, Redis
+**Match Score Formula:**
+Skills Match (50%): Required (70%) + Preferred (30%)
+Experience Match (20%): Level comparison
+Location Match (15%): Geographic alignment
+Title Similarity (10%): NLP semantic matching
+Other Factors (5%): Profile quality, activity
+
+**Semantic Matching:**
+- Exact match: 100% similarity
+- Synonym match: 90-95% (e.g., JS = JavaScript)
+- Related skill: 75-85% (e.g., React vs Angular)
+- Different skill: <75% (not counted)
+
+**Caching Strategy:**
+- TTL: 1 hour (resumes rarely change)
+- Invalidated on: Resume update, Job update
+- Key: match_score:user_{userId}:job_{jobId}
+
+**Performance:**
+- Resume fetch: 50ms
+- Skill matching (NLP): 200ms
+- Score calculation: 20ms
+- Total: ~270ms
+end note
+
+@enduml

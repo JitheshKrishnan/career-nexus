@@ -1,0 +1,316 @@
+' This Sequence is optional
+
+@startuml Get Personalized Job Recommendations
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Job Matcher Service" as JobMatcherSvc #004d26
+participant "Recommendation Engine" as RecEngine #004d26
+participant "User Service" as UserSvc #004d26
+participant "Resume Service" as ResumeSvc #004d26
+participant "Job Repository" as JobRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "NLP/AI Service" as NLP #004d26
+participant "Redis Cache" as Redis #661a1a
+participant "Notification Service" as NotifSvc #004d26
+
+title Get Personalized Job Recommendations Flow
+
+== Step 1: Request Recommendations ==
+
+User -> Gateway: GET /api/jobs/recommendations?limit=10\nAuthorization: Bearer {accessToken}
+activate Gateway
+
+Gateway -> Gateway: Validate JWT token\nExtract userId: 123
+
+Gateway -> JobMatcherSvc: GET /jobs/recommendations?userId=123&limit=10
+activate JobMatcherSvc
+
+== Step 2: Check Cached Recommendations ==
+
+JobMatcherSvc -> JobMatcherSvc: Generate cache key:\nkey = "recommendations:user_123:limit_10"
+
+JobMatcherSvc -> Redis: GET recommendations:{key}
+activate Redis
+
+alt Cache hit (recent recommendations)
+    Redis --> JobMatcherSvc: {cachedRecommendations, generatedAt}
+    deactivate Redis
+    
+    JobMatcherSvc -> JobMatcherSvc: Check if cache is fresh:\nAge < 6 hours? ✓
+    
+    JobMatcherSvc --> Gateway: 200 OK\n{recommendations from cache}
+    deactivate JobMatcherSvc
+    Gateway --> User: Recommendations (cached)
+    deactivate Gateway
+    
+else Cache miss or stale
+    Redis --> JobMatcherSvc: null
+    deactivate Redis
+    
+    == Step 3: Fetch User Profile & Preferences ==
+    
+    JobMatcherSvc -> UserSvc: GET /users/{userId}/profile
+    activate UserSvc
+    UserSvc -> DB: SELECT * FROM users WHERE id = 123
+    activate DB
+    DB --> UserSvc: User {name, email, location, preferences}
+    deactivate DB
+    UserSvc --> JobMatcherSvc: {\n  userId: 123,\n  location: "Remote",\n  preferredJobTypes: ["FULL_TIME", "CONTRACT"],\n  preferredLocations: ["Remote", "New York"],\n  salaryExpectation: 80000,\n  willingToRelocate: false\n}
+    deactivate UserSvc
+    
+    == Step 4: Fetch User Resume & Skills ==
+    
+    JobMatcherSvc -> ResumeSvc: GET /resumes/user/{userId}/latest
+    activate ResumeSvc
+    
+    ResumeSvc -> DB: SELECT r.*, rs.skill_name, rs.skill_category, \nrs.proficiency_level, rs.years_of_experience\nFROM resumes r\nJOIN resume_skills rs ON r.id = rs.resume_id\nWHERE r.user_id = 123 AND r.parse_status = 'COMPLETED'\nORDER BY r.uploaded_at DESC LIMIT 1
+    activate DB
+    DB --> ResumeSvc: Resume + Skills data
+    deactivate DB
+    
+    ResumeSvc --> JobMatcherSvc: {\n  resumeId: 789,\n  skills: [\n    {name: "Java", proficiency: "ADVANCED", years: 5},\n    {name: "Spring Boot", proficiency: "ADVANCED", years: 4},\n    {name: "Python", proficiency: "INTERMEDIATE", years: 2},\n    {name: "React", proficiency: "BEGINNER", years: 1},\n    {name: "MySQL", proficiency: "ADVANCED", years: 5},\n    {name: "Docker", proficiency: "INTERMEDIATE", years: 2},\n    {name: "AWS", proficiency: "INTERMEDIATE", years: 3}\n  ],\n  topSkills: ["Java", "Spring Boot", "MySQL"],\n  experienceYears: 5,\n  experienceLevel: "MID",\n  currentTitle: "Software Engineer"\n}
+    deactivate ResumeSvc
+    
+    == Step 5: Get Candidate Job Pool ==
+    
+    JobMatcherSvc -> RecEngine: generateRecommendations(userProfile, resumeData)
+    activate RecEngine
+    
+    RecEngine -> JobRepo: getCandidateJobs(userSkills, preferences)
+    activate JobRepo
+    
+    JobRepo -> DB: SELECT * FROM jobs\nWHERE is_active = true\n  AND posted_date > NOW() - INTERVAL '30 days'\n  AND (\n    location_type = 'Remote' OR \n    location_city IN ('New York')\n  )\n  AND job_type IN ('FULL_TIME', 'CONTRACT')\n  AND experience_level IN ('MID', 'SENIOR')\n  AND (\n    required_skills && ARRAY['Java', 'Spring Boot', 'MySQL'] OR\n    preferred_skills && ARRAY['Java', 'Spring Boot', 'MySQL']\n  )\nLIMIT 100
+    activate DB
+    
+    note right of DB
+    Query explanation:
+    - Active jobs only
+    - Posted within last 30 days
+    - Matches location preferences
+    - Matches job type preferences
+    - Experience level: MID or SENIOR (allow slight upward mobility)
+    - At least 1 skill overlap with user's top skills
+    - Fetch 100 candidates for scoring
+    end note
+    
+    DB --> JobRepo: 87 candidate jobs
+    deactivate DB
+    JobRepo --> RecEngine: {candidateJobs: [87 jobs]}
+    deactivate JobRepo
+    
+    == Step 6: Compute Match Scores for All Candidates ==
+    
+    RecEngine -> RecEngine: Initialize batch scoring:\nJobs to score: 87\nBatch size: 10 (parallel processing)
+    
+    loop For each batch of 10 jobs
+        RecEngine -> NLP: POST /nlp/batch-match-scores\n{\n  resumeSkills: [...],\n  jobs: [\n    {jobId: 1, requiredSkills: [...], preferredSkills: [...]},\n    {jobId: 2, requiredSkills: [...], preferredSkills: [...]},\n    ...\n  ]\n}
+        activate NLP
+        
+        NLP -> NLP: Process batch:\n- Semantic skill matching\n- Experience level comparison\n- Title similarity calculation
+        
+        NLP --> RecEngine: {\n  scores: [\n    {jobId: 1, skillMatch: 85%, expMatch: 100%, titleSim: 82%},\n    {jobId: 2, skillMatch: 72%, expMatch: 100%, titleSim: 75%},\n    ...\n  ]\n}
+        deactivate NLP
+    end
+    
+    RecEngine -> RecEngine: Calculate overall scores for all jobs:\nFor each job:\n  overallScore = (skillMatch × 0.50) + \n                 (expMatch × 0.20) + \n                 (locationMatch × 0.15) + \n                 (titleSim × 0.10) + \n                 (otherFactors × 0.05)
+    
+    note right of RecEngine
+    **Match Scores Computed:**
+    Job #1: 87% (Excellent)
+    Job #5: 84% (Good)
+    Job #12: 81% (Good)
+    Job #23: 78% (Good)
+    Job #34: 76% (Good)
+    ...
+    Job #87: 42% (Poor)
+    end note
+    
+    == Step 7: Apply Personalization Boosting ==
+    
+    RecEngine -> RecEngine: **Apply preference boosts:**\n\nFor each job:\n1. Preferred location match → +5% boost\n2. Preferred company (from saved jobs) → +10% boost\n3. Recently viewed similar jobs → +3% boost\n4. Salary meets expectation → +5% boost\n5. Company rating > 4.0 → +2% boost
+    
+    RecEngine -> DB: SELECT saved_job_id, viewed_job_id, \napplied_job_id FROM user_activity\nWHERE user_id = 123
+    activate DB
+    DB --> RecEngine: {savedJobs: [2, 15, 23], \n viewedJobs: [1, 5, 12, 34], \n appliedJobs: [8]}
+    deactivate DB
+    
+    RecEngine -> RecEngine: Apply activity-based adjustments:\n\nJob #1 (viewed before) → +3% boost\n  87% + 3% = 90%\n\nJob #5 (viewed before) → +3% boost\n  84% + 3% = 87%\n\nJob #12 (viewed before) → +3% boost\n  81% + 3% = 84%\n\nJob #23 (saved before) → +10% boost\n  78% + 10% = 88%
+    
+    RecEngine -> RecEngine: **Apply diversity bonus:**\nEnsure variety in recommendations:\n- Different companies\n- Mix of experience levels (MID + some SENIOR)\n- Different tech stacks (not all Java jobs)
+    
+    == Step 8: Filter & Rank Recommendations ==
+    
+    RecEngine -> RecEngine: **Filter by minimum threshold:**\nRemove jobs with match score < 60%\n87 candidates → 54 jobs remain
+    
+    RecEngine -> RecEngine: **Rank by adjusted score:**\nSort descending:\n1. Job #1: 90%\n2. Job #23: 88%\n3. Job #5: 87%\n4. Job #12: 84%\n5. Job #34: 83%\n...\n10. Job #56: 72%
+    
+    RecEngine -> RecEngine: **Apply top N limit:**\nReturn top 10 recommendations
+    
+    == Step 9: Enrich Job Details ==
+    
+    RecEngine -> JobRepo: enrichJobDetails(topJobIds)
+    activate JobRepo
+    JobRepo -> DB: SELECT j.*, c.name, c.logo_url, c.rating, c.size\nFROM jobs j\nJOIN companies c ON j.company_id = c.id\nWHERE j.id IN (1, 23, 5, 12, 34, 45, 56, 67, 78, 89)
+    activate DB
+    DB --> JobRepo: Enriched job data with company info
+    deactivate DB
+    JobRepo --> RecEngine: {enrichedJobs}
+    deactivate JobRepo
+    
+    RecEngine -> RecEngine: Format recommendations:\nFor each job:\n{\n  id: 1,\n  title: "Senior Java Developer",\n  company: {\n    name: "TechCorp",\n    logo: "https://...",\n    rating: 4.5,\n    size: "500-1000"\n  },\n  location: {type: "Remote"},\n  jobType: "FULL_TIME",\n  salaryRange: "$90,000 - $130,000",\n  requiredSkills: ["Java", "Spring Boot", "Microservices"],\n  matchScore: 90,\n  matchGrade: "EXCELLENT",\n  matchedSkills: ["Java", "Spring Boot", "MySQL"],\n  missingSkills: ["Microservices"],\n  postedDate: "2025-10-20",\n  daysAgo: 7,\n  applicationUrl: "https://...",\n  reasons: [\n    "Your Java skills are a strong match",\n    "Experience level aligns perfectly",\n    "You viewed similar jobs before"\n  ]\n}
+    
+    RecEngine --> JobMatcherSvc: {recommendations: [10 jobs]}
+    deactivate RecEngine
+    
+    == Step 10: Cache Recommendations ==
+    
+    JobMatcherSvc -> Redis: SETEX recommendations:user_123:limit_10\nVALUE: {recommendations JSON}\nTTL: 6 hours
+    activate Redis
+    Redis --> JobMatcherSvc: Cached
+    deactivate Redis
+    
+    note right of Redis
+    Cache TTL: 6 hours
+    Invalidation triggers:
+    - User updates resume
+    - User updates preferences
+    - New jobs posted matching user profile
+    - User applies to a recommended job
+    end note
+    
+    == Step 11: Store Recommendations History ==
+    
+    JobMatcherSvc -> DB: INSERT INTO recommendation_history\n(user_id, job_ids, match_scores, generated_at, algorithm_version)\nVALUES (123, ARRAY[1,23,5,...], ARRAY[90,88,87,...], \nNOW(), 'v2.1')
+    activate DB
+    DB --> JobMatcherSvc: History saved
+    deactivate DB
+    
+    == Step 12: Send Notification (if new high-quality matches) ==
+    
+    alt High-quality new matches found (score >= 85%)
+        JobMatcherSvc -> NotifSvc: POST /notifications/job-match-alert\n{\n  userId: 123,\n  jobCount: 3,\n  topJobs: [{id: 1, title: "...", score: 90}, ...]\n}
+        activate NotifSvc
+        NotifSvc --> JobMatcherSvc: 202 Accepted (notification queued)
+        deactivate NotifSvc
+        
+        note right of NotifSvc
+        Email subject: "🎯 3 new jobs match your profile!"
+        Contains top 3 recommendations with match scores
+        end note
+    end
+    
+    JobMatcherSvc --> Gateway: 200 OK\n{\n  recommendations: [10 jobs],\n  totalCandidates: 87,\n  averageScore: 78,\n  generatedAt: "2025-10-27T10:30:00Z"\n}
+    deactivate JobMatcherSvc
+    
+    Gateway --> User: ✓ Personalized recommendations ready
+    deactivate Gateway
+end
+
+note over User
+**Personalized Job Recommendations**
+
+🎯 Top 10 jobs handpicked for you
+
+[1] Senior Java Developer - TechCorp
+    Match: 90% ⭐⭐⭐⭐⭐ (Excellent)
+    📍 Remote | 💰 $90k-$130k | ⏰ 7 days ago
+    ✅ Java, Spring Boot, MySQL
+    ❌ Microservices (learn this!)
+    💡 Your Java skills are a strong match
+
+[2] Backend Engineer - StartupX  
+    Match: 88% ⭐⭐⭐⭐⭐ (Excellent)
+    📍 Remote | 💰 $85k-$120k | ⏰ 5 days ago
+    ✅ Java, Spring Boot, AWS
+    ❌ Kafka
+    💡 You saved similar jobs before
+
+[3] Full Stack Developer - InnovateLab
+    Match: 87% ⭐⭐⭐⭐ (Good)
+    📍 Remote | 💰 $80k-$110k | ⏰ 10 days ago
+    ✅ Java, React, MySQL
+    ❌ TypeScript
+    💡 Experience level aligns perfectly
+
+**Why these jobs?**
+Based on your skills, experience, location preferences,
+and previous job viewing activity.
+end note
+
+note over User, Redis
+**Recommendation Algorithm:**
+
+**Step 1: Candidate Pool (100 jobs)**
+- Active jobs (last 30 days)
+- Match location preferences
+- Match job type preferences
+- At least 1 skill overlap
+
+**Step 2: Batch Scoring (NLP)**
+- Compute match scores for all candidates
+- Parallel processing (10 jobs per batch)
+- Skills, experience, location, title similarity
+
+**Step 3: Personalization Boosting**
+- Preferred location: +5%
+- Saved/viewed jobs: +3-10%
+- Salary expectation met: +5%
+- Company rating: +2%
+
+**Step 4: Filtering & Ranking**
+- Remove jobs < 60% match
+- Sort by adjusted score
+- Apply diversity (different companies, tech stacks)
+- Return top 10
+
+**Performance:**
+- Candidate pool query: 80ms
+- Batch scoring (87 jobs): 1.2s
+- Personalization: 100ms
+- Ranking & enrichment: 150ms
+- Total: ~1.5 seconds
+
+**Refresh Strategy:**
+- Cache TTL: 6 hours
+- Refresh on resume update
+- Refresh on new relevant jobs
+- Push notifications for high matches (≥85%)
+end note
+
+@enduml
