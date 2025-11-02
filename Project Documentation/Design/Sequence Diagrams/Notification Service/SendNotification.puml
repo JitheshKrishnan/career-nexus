@@ -1,0 +1,228 @@
+@startuml Send Notification (Email & Push)
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+participant "Any Service\n(Job Matcher/\nLearning/Resume)" as SourceSvc #004d26
+participant "Notification Service" as NotifSvc #4d4d00
+participant "Message Queue\n(RabbitMQ)" as Queue #661a1a
+participant "Notification\nRepository" as NotifRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "Template Engine" as Template #004d26
+participant "SendGrid\n(Email)" as SendGrid #003366
+participant "FCM\n(Push Notification)" as FCM #003366
+actor "Job Seeker" as User #003366
+
+title Send Notification Flow (Email & Push)
+
+== Step 1: Event Triggered - Publish Notification ==
+
+SourceSvc -> SourceSvc: **Event occurs:**\n- Resume parsed successfully\n- Job match found (score > 70%)\n- Phase completed\n- Password reset requested
+
+SourceSvc -> NotifSvc: POST /notifications/send\n{\n  userId: 123,\n  type: "JOB_MATCH_FOUND",\n  channel: ["EMAIL", "PUSH"],\n  priority: "HIGH",\n  data: {\n    jobTitle: "Senior DevOps Engineer",\n    company: "Tech Corp",\n    matchScore: 85,\n    jobUrl: "https://..."\n  }\n}
+activate NotifSvc
+
+note right of SourceSvc
+Source service triggers notification
+without waiting for delivery
+(fire-and-forget pattern)
+end note
+
+== Step 2: Validate & Queue Notification ==
+
+NotifSvc -> NotifSvc: Validate request:\n✓ userId exists\n✓ notification type valid\n✓ required data present
+
+NotifSvc -> Queue: Publish to notification.queue\n{\n  notificationId: "notif_abc123",\n  userId: 123,\n  type: "JOB_MATCH_FOUND",\n  channels: ["EMAIL", "PUSH"],\n  priority: "HIGH",\n  data: {...},\n  timestamp: "2025-10-29T10:30:00Z"\n}
+activate Queue
+
+Queue --> NotifSvc: Message queued successfully
+deactivate Queue
+
+NotifSvc --> SourceSvc: 202 Accepted\n{\n  notificationId: "notif_abc123",\n  status: "QUEUED"\n}
+deactivate NotifSvc
+
+note right of NotifSvc
+Notification queued for async processing
+Source service continues without blocking
+end note
+
+== Step 3: Message Queue Consumer Picks Up Notification ==
+
+Queue -> NotifSvc: Consume message from queue
+activate NotifSvc
+activate Queue
+
+NotifSvc -> NotifSvc: Deserialize message\nExtract notification details
+
+deactivate Queue
+
+== Step 4: Check User Notification Preferences ==
+
+NotifSvc -> NotifRepo: getUserPreferences(userId: 123)
+activate NotifRepo
+
+NotifRepo -> DB: SELECT email_enabled, push_enabled, \nnotification_types\nFROM user_notification_preferences\nWHERE user_id = 123
+activate DB
+DB --> NotifRepo: {\n  emailEnabled: true,\n  pushEnabled: true,\n  allowedTypes: ["JOB_MATCH_FOUND", "PHASE_COMPLETED"]\n}
+deactivate DB
+
+NotifRepo --> NotifSvc: User preferences retrieved
+deactivate NotifRepo
+
+alt Notification type disabled by user
+    NotifSvc -> NotifSvc: Skip notification\n(User opted out)
+    
+    NotifSvc -> DB: INSERT INTO notification_logs\n(notification_id, user_id, type, status, reason)\nVALUES ('notif_abc123', 123, 'JOB_MATCH_FOUND', \n'SKIPPED', 'User preference disabled')
+    activate DB
+    DB --> NotifSvc: Log saved
+    deactivate DB
+    
+    NotifSvc -> Queue: Acknowledge message
+    note right of NotifSvc
+    Message acknowledged and removed from queue
+    end note
+else User preferences allow notification
+    
+    == Step 5: Retrieve User Contact Details ==
+    
+    NotifSvc -> NotifRepo: getUserContactInfo(userId: 123)
+    activate NotifRepo
+    
+    NotifRepo -> DB: SELECT u.email, u.full_name, \n       ud.fcm_token, ud.device_type\nFROM users u\nLEFT JOIN user_devices ud ON u.id = ud.user_id\nWHERE u.id = 123 AND ud.is_active = true
+    activate DB
+    DB --> NotifRepo: {\n  email: "john.doe@example.com",\n  fullName: "John Doe",\n  fcmToken: "fcm_token_xyz",\n  deviceType: "ANDROID"\n}
+    deactivate DB
+    
+    NotifRepo --> NotifSvc: Contact info retrieved
+    deactivate NotifRepo
+    
+    == Step 6: Process Email Template ==
+    
+    alt Email channel enabled
+        NotifSvc -> Template: renderEmailTemplate(\n  templateId: "job_match_found",\n  data: {\n    userName: "John Doe",\n    jobTitle: "Senior DevOps Engineer",\n    company: "Tech Corp",\n    matchScore: 85,\n    jobUrl: "https://..."\n  }\n)
+        activate Template
+        
+        Template -> Template: Load template from resources:\n- Subject: "🎯 New Job Match: {{jobTitle}} at {{company}}"\n- HTML body with personalized content\n- Plain text fallback
+        
+        Template --> NotifSvc: {\n  subject: "🎯 New Job Match: Senior DevOps Engineer...",\n  htmlBody: "<html>...",\n  textBody: "Hi John..."\n}
+        deactivate Template
+        
+        == Step 7: Send Email via SendGrid ==
+        
+        NotifSvc -> SendGrid: POST /v3/mail/send\n{\n  from: {\n    email: "noreply@jobmatcher.com",\n    name: "Job Matcher Platform"\n  },\n  personalizations: [{\n    to: [{ email: "john.doe@example.com" }],\n    subject: "🎯 New Job Match..."\n  }],\n  content: [\n    { type: "text/html", value: "<html>..." },\n    { type: "text/plain", value: "Hi John..." }\n  ]\n}
+        activate SendGrid
+        
+        SendGrid -> SendGrid: Validate email\nQueue for delivery
+        
+        SendGrid --> NotifSvc: 202 Accepted\n{\n  messageId: "sg_msg_123"\n}
+        deactivate SendGrid
+        
+        note right of SendGrid
+        SendGrid queues email for delivery
+        Actual delivery happens asynchronously
+        end note
+        
+        NotifSvc -> DB: INSERT INTO notification_delivery_logs\n(notification_id, channel, status, \nprovider_message_id, sent_at)\nVALUES ('notif_abc123', 'EMAIL', 'SENT', \n'sg_msg_123', NOW())
+        activate DB
+        DB --> NotifSvc: Email delivery logged
+        deactivate DB
+    end
+    
+    == Step 8: Send Push Notification via FCM ==
+    
+    alt Push channel enabled AND FCM token exists
+        NotifSvc -> FCM: POST /v1/projects/myproject/messages:send\n{\n  message: {\n    token: "fcm_token_xyz",\n    notification: {\n      title: "🎯 New Job Match!",\n      body: "Senior DevOps Engineer at Tech Corp (85% match)"\n    },\n    data: {\n      type: "JOB_MATCH_FOUND",\n      jobId: "456",\n      matchScore: "85",\n      clickAction: "OPEN_JOB_DETAILS"\n    },\n    android: {\n      priority: "HIGH",\n      notification: { sound: "default" }\n    }\n  }\n}
+        activate FCM
+        
+        FCM -> FCM: Validate FCM token\nQueue for delivery
+        
+        FCM --> NotifSvc: 200 OK\n{\n  name: "projects/.../messages/fcm_msg_789"\n}
+        deactivate FCM
+        
+        note right of FCM
+        FCM delivers push notification to device
+        User sees notification in notification tray
+        end note
+        
+        NotifSvc -> DB: INSERT INTO notification_delivery_logs\n(notification_id, channel, status, \nprovider_message_id, sent_at)\nVALUES ('notif_abc123', 'PUSH', 'SENT', \n'fcm_msg_789', NOW())
+        activate DB
+        DB --> NotifSvc: Push delivery logged
+        deactivate DB
+    end
+    
+    == Step 9: Save Notification Record ==
+    
+    NotifSvc -> DB: INSERT INTO notifications\n(id, user_id, type, title, message, \ndata, is_read, created_at)\nVALUES ('notif_abc123', 123, 'JOB_MATCH_FOUND',\n'New Job Match!', 'Senior DevOps Engineer...',\n'{"jobId": 456, ...}', false, NOW())
+    activate DB
+    DB --> NotifSvc: Notification saved
+    deactivate DB
+    
+    note right of DB
+    Notification stored in DB for:
+    - In-app notification display
+    - Notification history
+    - Read/unread tracking
+    end note
+    
+    == Step 10: Acknowledge Queue Message ==
+    
+    NotifSvc -> Queue: ACK message\n(Remove from queue)
+    activate Queue
+    Queue --> NotifSvc: Message acknowledged
+    deactivate Queue
+    
+    note right of NotifSvc
+    Message successfully processed
+    and removed from queue
+    end note
+    
+end
+
+deactivate NotifSvc
+
+== Step 11: User Receives Notifications ==
+
+SendGrid -> User: 📧 Email delivered\n"🎯 New Job Match: Senior DevOps Engineer at Tech Corp"
+
+FCM -> User: 📱 Push notification delivered\n"New Job Match! (85% match)"
+
+note over User
+User receives:
+✓ Email in inbox
+✓ Push notification on mobile device
+✓ In-app notification (when they open app)
+end note
+
+@enduml

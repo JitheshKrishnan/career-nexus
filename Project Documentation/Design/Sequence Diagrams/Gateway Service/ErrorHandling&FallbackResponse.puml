@@ -1,0 +1,375 @@
+@startuml Error Handling & Fallback Response
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Client" as Client #003366
+participant "API Gateway" as Gateway #4d4d00
+participant "Circuit Breaker\n(Resilience4j)" as CircuitBreaker #661a1a
+participant "Job Matcher Service" as JobService #004d26
+participant "Redis Cache" as Redis #661a1a
+participant "Monitoring\n(Prometheus/Logs)" as Monitoring #661a1a
+participant "Alert System" as AlertSystem #661a1a
+
+title Error Handling & Fallback Response Flow
+
+== Scenario 1: Service Timeout ==
+
+Client -> Gateway: GET /api/jobs/recommendations/user/123
+activate Gateway
+
+Gateway -> Gateway: Auth & Rate limit passed ✓
+
+Gateway -> CircuitBreaker: allowRequest("job-matcher-service")
+activate CircuitBreaker
+CircuitBreaker --> Gateway: CLOSED - Proceed
+deactivate CircuitBreaker
+
+Gateway -> JobService: GET /jobs/recommendations/user/123\nTimeout: 5 seconds
+activate JobService
+
+note right of JobService
+Service is experiencing high load
+Processing is slow...
+end note
+
+JobService -> JobService: ⏰ Processing... (slow query)\nFetching jobs from multiple sources\nCalculating match scores...
+
+Gateway -> Gateway: ⏰ Waiting... (5 seconds elapsed)
+
+alt Timeout occurs
+    Gateway -> Gateway: **Timeout detected!**\n- Request time: 5000ms\n- Timeout threshold: 5000ms\n- Action: Cancel request
+    
+    Gateway -x JobService: ❌ Request cancelled
+    deactivate JobService
+    
+    note right of Gateway
+    Service failed to respond in time
+    Gateway cancels the request
+    end note
+    
+    == Handle Timeout Error ==
+    
+    Gateway -> CircuitBreaker: recordFailure("job-matcher-service", "TIMEOUT")
+    activate CircuitBreaker
+    
+    CircuitBreaker -> Redis: HINCRBY circuit:failures:job-matcher-service timeout 1
+    activate Redis
+    Redis --> CircuitBreaker: Failure count: 3
+    deactivate Redis
+    
+    CircuitBreaker -> CircuitBreaker: **Evaluate circuit state:**\n\nFailures in last 10 requests: 3\nFailure rate: 30%\nThreshold: 50%\n\n✓ State remains: CLOSED\n(Not enough failures to open circuit)
+    
+    CircuitBreaker --> Gateway: Failure recorded, state: CLOSED
+    deactivate CircuitBreaker
+    
+    == Attempt Cache Fallback ==
+    
+    Gateway -> Redis: GET cache:jobs:recommendations:123
+    activate Redis
+    
+    alt Cache hit
+        Redis --> Gateway: {\n  jobs: [...],\n  cachedAt: "2025-10-29T10:25:00Z",\n  ttl: 295 seconds\n}
+        deactivate Redis
+        
+        note right of Gateway
+        Cache hit! Return stale data
+        with appropriate headers
+        end note
+        
+        Gateway -> Monitoring: logEvent({\n  type: "CACHE_FALLBACK_SUCCESS",\n  service: "job-matcher-service",\n  userId: 123,\n  reason: "SERVICE_TIMEOUT"\n})
+        activate Monitoring
+        Monitoring --> Gateway: Logged
+        deactivate Monitoring
+        
+        Gateway --> Client: 200 OK (from cache)\n{\n  jobs: [...],\n  warning: "Data may be stale"\n}\nHeaders:\n  X-Cache: HIT\n  X-Cache-Age: 300s\n  X-Service-Status: DEGRADED
+        deactivate Gateway
+        
+        note over Client
+        User gets cached recommendations
+        Warning shown: "Data may be slightly outdated"
+        end note
+        
+    else Cache miss
+        Redis --> Gateway: null (no cached data)
+        deactivate Redis
+        
+        Gateway -> Monitoring: logError({\n  type: "SERVICE_TIMEOUT",\n  service: "job-matcher-service",\n  endpoint: "/jobs/recommendations/user/123",\n  duration: 5000,\n  fallback: "NONE"\n})
+        activate Monitoring
+        Monitoring --> Gateway: Logged
+        deactivate Monitoring
+        
+        Gateway --> Client: 504 Gateway Timeout\n{\n  error: "SERVICE_TIMEOUT",\n  message: "Service took too long to respond",\n  service: "job-matcher-service",\n  retryAfter: 30\n}
+        deactivate Gateway
+    end
+end
+
+== Scenario 2: Service Returns Error (500) ==
+
+Client -> Gateway: GET /api/jobs/recommendations/user/123
+activate Gateway
+
+Gateway -> Gateway: Auth & Rate limit passed ✓
+
+Gateway -> CircuitBreaker: allowRequest("job-matcher-service")
+activate CircuitBreaker
+CircuitBreaker --> Gateway: CLOSED - Proceed
+deactivate CircuitBreaker
+
+Gateway -> JobService: GET /jobs/recommendations/user/123
+activate JobService
+
+JobService -> JobService: ❌ Internal error occurred:\n- Database connection failed\n- NullPointerException in matching logic\n- External API call failed
+
+JobService --> Gateway: 500 Internal Server Error\n{\n  error: "INTERNAL_ERROR",\n  message: "Failed to fetch recommendations",\n  timestamp: "2025-10-29T10:30:00Z"\n}
+deactivate JobService
+
+note right of JobService
+Service returned error response
+Gateway must handle gracefully
+end note
+
+== Record Failure & Check Circuit ==
+
+Gateway -> CircuitBreaker: recordFailure("job-matcher-service", "SERVER_ERROR")
+activate CircuitBreaker
+
+CircuitBreaker -> Redis: GET circuit:failures:job-matcher-service
+activate Redis
+Redis --> CircuitBreaker: {\n  total: 4,\n  timeout: 3,\n  serverError: 1,\n  window: "last 10 requests"\n}
+deactivate Redis
+
+CircuitBreaker -> CircuitBreaker: **Calculate failure rate:**\n\nTotal requests: 10\nTotal failures: 5 (4 previous + 1 new)\nFailure rate: 50%\nThreshold: 50%\n\n⚠️ THRESHOLD REACHED!\n**Opening circuit breaker**
+
+CircuitBreaker -> Redis: SET circuit:state:job-matcher-service "OPEN"\nSETEX circuit:open:timestamp 30
+activate Redis
+Redis --> CircuitBreaker: Circuit state updated
+deactivate Redis
+
+CircuitBreaker --> Gateway: ⚠️ Circuit breaker OPENED\n{\n  state: "OPEN",\n  reason: "FAILURE_THRESHOLD_EXCEEDED",\n  waitDuration: 30,\n  nextAttempt: "2025-10-29T10:30:30Z"\n}
+deactivate CircuitBreaker
+
+note right of CircuitBreaker
+Circuit breaker OPENED!
+Service marked as unhealthy
+All requests will fail-fast for 30s
+end note
+
+== Attempt Fallback ==
+
+Gateway -> Redis: GET cache:jobs:recommendations:123
+activate Redis
+Redis --> Gateway: {\n  jobs: [...],\n  cachedAt: "2025-10-29T10:20:00Z"\n}
+deactivate Redis
+
+Gateway -> Monitoring: logEvent({\n  type: "CIRCUIT_BREAKER_OPENED",\n  service: "job-matcher-service",\n  failureRate: 50,\n  fallbackUsed: true\n})
+activate Monitoring
+Monitoring --> Gateway: Logged
+deactivate Monitoring
+
+Gateway --> Client: 200 OK (degraded)\n{\n  jobs: [...],\n  warning: "Service temporarily unavailable, showing cached results"\n}\nHeaders:\n  X-Cache: HIT\n  X-Service-Status: CIRCUIT_OPEN\n  X-Fallback: CACHE
+deactivate Gateway
+
+note over Client
+User gets cached results
+System degraded but functional
+end note
+
+== Scenario 3: Circuit Breaker OPEN - Fail Fast ==
+
+Client -> Gateway: GET /api/jobs/recommendations/user/456
+activate Gateway
+
+Gateway -> Gateway: Auth & Rate limit passed ✓
+
+Gateway -> CircuitBreaker: allowRequest("job-matcher-service")
+activate CircuitBreaker
+
+CircuitBreaker -> Redis: GET circuit:state:job-matcher-service
+activate Redis
+Redis --> CircuitBreaker: {\n  state: "OPEN",\n  openedAt: "2025-10-29T10:30:00Z",\n  waitDuration: 30\n}
+deactivate Redis
+
+CircuitBreaker -> CircuitBreaker: **Check if wait duration passed:**\n\nCurrent time: 10:30:15\nOpened at: 10:30:00\nElapsed: 15 seconds\nWait duration: 30 seconds\n\n❌ Still in wait period\n**Request REJECTED (fail-fast)**
+
+CircuitBreaker --> Gateway: ❌ Circuit OPEN - Request rejected\n{\n  state: "OPEN",\n  reason: "SERVICE_UNAVAILABLE",\n  retryAfter: 15\n}
+deactivate CircuitBreaker
+
+note right of CircuitBreaker
+Circuit breaker blocks request
+Prevents overloading unhealthy service
+Fails fast without calling service
+end note
+
+== Return Fallback or Error ==
+
+Gateway -> Redis: GET cache:jobs:recommendations:456
+activate Redis
+
+alt Cache available
+    Redis --> Gateway: Cached data
+    deactivate Redis
+    
+    Gateway --> Client: 200 OK (cached)\n{\n  jobs: [...],\n  warning: "Service temporarily unavailable"\n}\nHeaders:\n  X-Cache: HIT\n  X-Service-Status: CIRCUIT_OPEN
+    deactivate Gateway
+    
+else No cache available
+    Redis --> Gateway: null
+    deactivate Redis
+    
+    Gateway -> Gateway: **Return default fallback:**\n\n- Empty job list\n- Helpful error message\n- Retry guidance
+    
+    Gateway --> Client: 503 Service Unavailable\n{\n  error: "SERVICE_TEMPORARILY_UNAVAILABLE",\n  message: "Job recommendations service is down",\n  fallback: {\n    jobs: [],\n    suggestion: "Please try again in a few moments"\n  },\n  retryAfter: 15\n}\nHeaders:\n  X-Service-Status: CIRCUIT_OPEN\n  Retry-After: 15
+    deactivate Gateway
+end
+
+== Scenario 4: Circuit Breaker Transitions to HALF_OPEN ==
+
+note over CircuitBreaker
+30 seconds have passed...
+Circuit breaker attempts recovery
+end note
+
+Client -> Gateway: GET /api/jobs/recommendations/user/123
+activate Gateway
+
+Gateway -> CircuitBreaker: allowRequest("job-matcher-service")
+activate CircuitBreaker
+
+CircuitBreaker -> Redis: GET circuit:state:job-matcher-service
+activate Redis
+Redis --> CircuitBreaker: {\n  state: "OPEN",\n  openedAt: "2025-10-29T10:30:00Z"\n}
+deactivate Redis
+
+CircuitBreaker -> CircuitBreaker: **Check wait duration:**\n\nCurrent time: 10:30:35\nOpened at: 10:30:00\nElapsed: 35 seconds\nWait duration: 30 seconds\n\n✓ Wait period completed!\n**Transition to HALF_OPEN**
+
+CircuitBreaker -> Redis: SET circuit:state:job-matcher-service "HALF_OPEN"
+activate Redis
+Redis --> CircuitBreaker: State updated
+deactivate Redis
+
+CircuitBreaker --> Gateway: State: HALF_OPEN\nAllow test request
+deactivate CircuitBreaker
+
+note right of CircuitBreaker
+HALF_OPEN state:
+Allow limited requests to test service health
+If successful → CLOSED
+If fails → OPEN again
+end note
+
+Gateway -> JobService: GET /jobs/recommendations/user/123\n(Test request)
+activate JobService
+
+alt Service recovered
+    JobService -> JobService: ✓ Service healthy now\nDatabase connection restored\nProcessing normally
+    
+    JobService --> Gateway: 200 OK\n{\n  jobs: [...]\n}
+    deactivate JobService
+    
+    Gateway -> CircuitBreaker: recordSuccess("job-matcher-service")
+    activate CircuitBreaker
+    
+    CircuitBreaker -> CircuitBreaker: **Success in HALF_OPEN:**\n\nRequired consecutive successes: 3\nCurrent: 1\n\nState remains: HALF_OPEN\n(Need 2 more successes)
+    
+    CircuitBreaker -> Redis: INCR circuit:halfopen:success:job-matcher-service
+    activate Redis
+    Redis --> CircuitBreaker: Success count: 1
+    deactivate Redis
+    
+    CircuitBreaker --> Gateway: Success recorded, need 2 more
+    deactivate CircuitBreaker
+    
+    Gateway --> Client: 200 OK\n{\n  jobs: [...]\n}\nHeaders:\n  X-Service-Status: RECOVERING
+    deactivate Gateway
+    
+    note over Client
+    Service recovering!
+    More successful requests will close circuit
+    end note
+    
+else Service still failing
+    JobService -> JobService: ❌ Still failing
+    JobService --> Gateway: 500 Internal Server Error
+    deactivate JobService
+    
+    Gateway -> CircuitBreaker: recordFailure("job-matcher-service")
+    activate CircuitBreaker
+    
+    CircuitBreaker -> CircuitBreaker: **Failure in HALF_OPEN:**\n\n❌ Test request failed\n**Re-open circuit breaker**
+    
+    CircuitBreaker -> Redis: SET circuit:state:job-matcher-service "OPEN"\nSETEX circuit:open:timestamp 30
+    activate Redis
+    Redis --> CircuitBreaker: Circuit re-opened
+    deactivate Redis
+    
+    CircuitBreaker --> Gateway: Circuit re-opened
+    deactivate CircuitBreaker
+    
+    Gateway -> AlertSystem: sendAlert({\n  severity: "HIGH",\n  service: "job-matcher-service",\n  message: "Circuit breaker re-opened, service still unhealthy"\n})
+    activate AlertSystem
+    AlertSystem -> AlertSystem: Notify DevOps team:\n- Slack/PagerDuty alert\n- Email to on-call engineer
+    AlertSystem --> Gateway: Alert sent
+    deactivate AlertSystem
+    
+    Gateway --> Client: 503 Service Unavailable\n(with fallback/cached data if available)
+    deactivate Gateway
+end
+
+== Monitoring & Alerting ==
+
+note over Monitoring
+Continuous monitoring logs:
+✓ Circuit breaker state changes
+✓ Failure rates and patterns
+✓ Fallback usage statistics
+✓ Service health trends
+end note
+
+Monitoring -> AlertSystem: Threshold alert:\n"job-matcher-service has been down for 5 minutes"
+activate AlertSystem
+
+AlertSystem -> AlertSystem: **Alert triggered:**\n\nService: job-matcher-service\nStatus: Circuit OPEN\nDuration: 5 minutes\nFailure rate: 50%\nFallback usage: 95%\n\n→ Page on-call engineer
+
+note right of AlertSystem
+DevOps team notified:
+- Investigate service health
+- Check logs and metrics
+- Deploy fix if needed
+end note
+
+deactivate AlertSystem
+
+@enduml

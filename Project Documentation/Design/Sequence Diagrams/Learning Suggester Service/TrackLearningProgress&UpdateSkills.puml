@@ -1,0 +1,227 @@
+@startuml Track Learning Progress & Update Skills
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Learning Suggester\nService" as LearningSvc #004d26
+participant "Progress\nRepository" as ProgressRepo #661a1a
+participant "Learning Path\nRepository" as PathRepo #661a1a
+participant "Resume Service" as ResumeSvc #004d26
+participant "Notification Service" as NotifSvc #004d26
+participant "PostgreSQL DB" as DB #661a1a
+participant "Redis Cache" as Redis #661a1a
+
+title Track Learning Progress & Update Skills Flow
+
+== Step 1: Mark Course as Complete ==
+
+User -> Gateway: POST /api/learning/paths/{pathId}/complete-course\n{\n  courseId: "udemy_123",\n  phaseId: 1,\n  completionDate: "2025-11-22",\n  certificateUrl: "https://..." (optional)\n}
+activate Gateway
+
+Gateway -> Gateway: Validate JWT\nExtract userId: 123
+
+Gateway -> LearningSvc: POST /learning/paths/{pathId}/complete-course\n{userId: 123, courseId, phaseId, ...}
+activate LearningSvc
+
+== Step 2: Verify Course Belongs to User's Path ==
+
+LearningSvc -> PathRepo: getPathWithCourses(pathId, userId)
+activate PathRepo
+
+PathRepo -> DB: SELECT lp.*, lpm.*, lpc.*\nFROM learning_paths lp\nJOIN learning_path_milestones lpm ON lp.id = lpm.path_id\nJOIN learning_path_courses lpc ON lpm.id = lpc.milestone_id\nWHERE lp.id = 789 AND lp.user_id = 123
+activate DB
+DB --> PathRepo: Learning path with courses
+deactivate DB
+
+PathRepo --> LearningSvc: {learningPath, courses}
+deactivate PathRepo
+
+alt Course not found in path
+    LearningSvc --> Gateway: 404 Not Found\n"Course not part of this learning path"
+    deactivate LearningSvc
+    Gateway --> User: Error: Invalid course
+    deactivate Gateway
+else Course found in path
+    
+    == Step 3: Update Course Completion ==
+    
+    LearningSvc -> ProgressRepo: markCourseComplete(userId, pathId, courseId)
+    activate ProgressRepo
+    
+    ProgressRepo -> DB: INSERT INTO course_completion_history\n(user_id, path_id, course_id, course_source, \ncompleted_at, certificate_url)\nVALUES (123, 789, 'udemy_123', 'UDEMY', \n'2025-11-22', 'https://...')
+    activate DB
+    DB --> ProgressRepo: Completion recorded
+    deactivate DB
+    
+    ProgressRepo -> DB: UPDATE learning_progress\nSET completed_courses = \n    array_append(completed_courses, 'udemy_123'),\n    last_activity_at = NOW()\nWHERE user_id = 123 AND path_id = 789
+    activate DB
+    DB --> ProgressRepo: Progress updated
+    deactivate DB
+    
+    ProgressRepo --> LearningSvc: {courseCompleted: true}
+    deactivate ProgressRepo
+    
+    == Step 4: Check Phase Completion ==
+    
+    LearningSvc -> LearningSvc: **Check if phase is complete:**\n\nPhase 1: Cloud Fundamentals\nRequired courses: 1 (AWS Solutions Architect)\nCompleted courses: 1 (udemy_123)\n\n✓ Phase 1 is complete!
+    
+    alt Phase completed
+        LearningSvc -> ProgressRepo: markPhaseComplete(userId, pathId, phaseId)
+        activate ProgressRepo
+        
+        ProgressRepo -> DB: INSERT INTO phase_completion_history\n(user_id, path_id, phase_id, completed_at)\nVALUES (123, 789, 1, NOW())
+        activate DB
+        DB --> ProgressRepo: Phase completion recorded
+        deactivate DB
+        
+        ProgressRepo -> DB: UPDATE learning_progress\nSET current_phase = 2,\n    completed_phases = completed_phases + 1\nWHERE user_id = 123 AND path_id = 789
+        activate DB
+        DB --> ProgressRepo: Updated to next phase
+        deactivate DB
+        
+        ProgressRepo --> LearningSvc: {phaseCompleted: true, nextPhase: 2}
+        deactivate ProgressRepo
+        
+        note right of LearningSvc
+        Phase 1 Complete!
+        User progresses to Phase 2: Containerization
+        end note
+    end
+    
+    == Step 5: Calculate Overall Progress ==
+    
+    LearningSvc -> ProgressRepo: calculateProgress(userId, pathId)
+    activate ProgressRepo
+    
+    ProgressRepo -> DB: SELECT \n  (SELECT COUNT(*) FROM course_completion_history \n   WHERE user_id = 123 AND path_id = 789) as completed,\n  (SELECT COUNT(*) FROM learning_path_courses lpc\n   JOIN learning_path_milestones lpm ON lpc.milestone_id = lpm.id\n   WHERE lpm.path_id = 789) as total
+    activate DB
+    DB --> ProgressRepo: {completed: 1, total: 4}
+    deactivate DB
+    
+    ProgressRepo -> ProgressRepo: **Calculate percentages:**\n\nCourses: 1/4 completed = 25%\nPhases: 1/4 completed = 25%\nEstimated time spent: 27 hours (1 course)\nRemaining time: 73 hours\n\n**Overall Progress: 25%**
+    
+    ProgressRepo --> LearningSvc: {\n  completionPercentage: 25,\n  completedCourses: 1,\n  totalCourses: 4,\n  completedPhases: 1,\n  totalPhases: 4,\n  hoursSpent: 27,\n  hoursRemaining: 73\n}
+    deactivate ProgressRepo
+    
+    == Step 6: Check for Skill Acquisition ==
+    
+    LearningSvc -> LearningSvc: **Determine if skill should be added to resume:**\n\nPhase 1 completed → AWS skill acquired\n\nCriteria for skill acquisition:\n✓ Course completed with certificate\n✓ Phase milestone reached\n✓ Skill is primary focus of phase\n✓ User spent significant time (27 hrs)\n\n**Decision: Add "AWS" to resume**
+    
+    == Step 7: Update Resume with New Skill ==
+    
+    LearningSvc -> ResumeSvc: POST /resumes/user/{userId}/add-skill\n{\n  skill: "AWS",\n  proficiency: "BEGINNER",\n  yearsOfExperience: 0,\n  source: "LEARNING_PATH",\n  certificateUrl: "https://..."\n}
+    activate ResumeSvc
+    
+    ResumeSvc -> DB: SELECT id FROM resumes\nWHERE user_id = 123 AND parse_status = 'COMPLETED'\nORDER BY uploaded_at DESC LIMIT 1
+    activate DB
+    DB --> ResumeSvc: resumeId: 456
+    deactivate DB
+    
+    ResumeSvc -> DB: INSERT INTO resume_skills\n(resume_id, skill_name, skill_category, \nproficiency_level, years_of_experience, \nacquired_via, certificate_url, added_at)\nVALUES (456, 'AWS', 'TECHNICAL', 'BEGINNER', 0, \n'LEARNING_PATH', 'https://...', NOW())
+    activate DB
+    DB --> ResumeSvc: Skill added to resume
+    deactivate DB
+    
+    ResumeSvc -> DB: UPDATE resumes\nSET skills_count = skills_count + 1,\n    updated_at = NOW()\nWHERE id = 456
+    activate DB
+    DB --> ResumeSvc: Resume updated
+    deactivate DB
+    
+    ResumeSvc --> LearningSvc: {\n  success: true,\n  skillAdded: "AWS",\n  resumeId: 456\n}
+    deactivate ResumeSvc
+    
+    note right of LearningSvc
+    Skill successfully added to resume!
+    User can now match with AWS-related jobs
+    end note
+    
+    == Step 8: Invalidate Cache ==
+    
+    LearningSvc -> Redis: DEL progress:user:123:path:789
+    activate Redis
+    Redis --> LearningSvc: Cache cleared
+    deactivate Redis
+    
+    LearningSvc -> Redis: DEL resume:skills:456
+    activate Redis
+    Redis --> LearningSvc: Cache cleared
+    deactivate Redis
+    
+    note right of Redis
+    Clear cached progress and resume data
+    to ensure fresh data on next fetch
+    end note
+    
+    == Step 9: Send Notification (Async) ==
+    
+    LearningSvc -> NotifSvc: POST /notifications/send (async)\n{\n  userId: 123,\n  type: "PHASE_COMPLETED",\n  data: {\n    phaseName: "Cloud Fundamentals",\n    skillAdded: "AWS",\n    nextPhase: "Containerization"\n  }\n}
+    activate NotifSvc
+    
+    NotifSvc -> DB: INSERT INTO notifications\n(user_id, type, title, message, is_read, created_at)\nVALUES (123, 'PHASE_COMPLETED', \n'Phase Completed!', \n'Congratulations! You completed Cloud Fundamentals...', \nfalse, NOW())
+    activate DB
+    DB --> NotifSvc: Notification saved
+    deactivate DB
+    
+    NotifSvc -> NotifSvc: Queue email notification\n(SendGrid/SMTP)
+    
+    note right of NotifSvc
+    Email sent asynchronously:
+    "🎉 Phase Completed! AWS skill added to your resume"
+    end note
+    
+    NotifSvc --> LearningSvc: {notificationQueued: true}
+    deactivate NotifSvc
+    
+    == Step 10: Return Success Response ==
+    
+    LearningSvc --> Gateway: 200 OK\n{\n  success: true,\n  courseCompleted: true,\n  phaseCompleted: true,\n  progress: {\n    completionPercentage: 25,\n    completedCourses: 1,\n    totalCourses: 4,\n    nextPhase: "Containerization"\n  },\n  skillAdded: {\n    skill: "AWS",\n    addedToResume: true\n  },\n  message: "Congratulations! Phase completed and AWS skill added to resume"\n}
+    deactivate LearningSvc
+    
+    Gateway --> User: Success Response\nwith progress details
+    deactivate Gateway
+    
+    note over User
+    User sees:
+    ✓ Course marked complete
+    ✓ Phase 1 completed (25% overall)
+    ✓ AWS skill added to resume
+    ✓ Next: Phase 2 - Containerization
+    end note
+    
+end
+
+@enduml

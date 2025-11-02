@@ -1,0 +1,289 @@
+@startuml Course Recommendations (Multi-source Aggregation)
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Learning Suggester\nService" as LearningSvc #004d26
+participant "Course Recommendation\nService" as CourseRecSvc #004d26
+participant "API Aggregator" as APIAgg #004d26
+participant "Course Ranker" as CourseRanker #4d4d00
+participant "Udemy API" as Udemy #660066
+participant "Coursera API" as Coursera #660066
+participant "YouTube API" as YouTube #660066
+participant "Saved Course\nRepository" as SavedCourseRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "Redis Cache" as Redis #661a1a
+
+title Course Recommendations - Multi-source Aggregation Flow
+
+== Step 1: Request Course Recommendations ==
+
+User -> Gateway: GET /api/learning/courses/recommendations?\nskill=AWS&level=BEGINNER&limit=10
+activate Gateway
+
+Gateway -> Gateway: Validate JWT\nExtract userId: 123
+
+Gateway -> LearningSvc: GET /learning/courses?skill=AWS&level=BEGINNER\n&userId=123&limit=10
+activate LearningSvc
+
+== Step 2: Check Cached Recommendations ==
+
+LearningSvc -> LearningSvc: Generate cache key:\nkey = "courses:aws:beginner:10"
+
+LearningSvc -> Redis: GET courses:{key}
+activate Redis
+
+alt Cache hit (recent recommendations)
+    Redis --> LearningSvc: {cachedCourses, generatedAt}
+    deactivate Redis
+    
+    LearningSvc -> LearningSvc: Check cache freshness:\nAge < 6 hours? ✓
+    
+    LearningSvc --> Gateway: 200 OK\n{courses from cache}
+    deactivate LearningSvc
+    Gateway --> User: Course recommendations (cached)
+    deactivate Gateway
+    
+else Cache miss or stale
+    Redis --> LearningSvc: null
+    deactivate Redis
+    
+    == Step 3: Parallel API Calls to Course Providers ==
+    
+    LearningSvc -> CourseRecSvc: getCourses(skill: "AWS", level: "BEGINNER")
+    activate CourseRecSvc
+    
+    CourseRecSvc -> APIAgg: aggregateCourses(skill, level, sources: ALL)
+    activate APIAgg
+    
+    note over APIAgg
+    Execute API calls in parallel
+    using CompletableFuture or async/await
+    Timeout: 5 seconds per API
+    end note
+    
+    par Udemy API Call
+        APIAgg -> Udemy: GET /api/courses/?\nsearch=AWS&level=Beginner&sort=rating\n&price=paid,free
+        activate Udemy
+        
+        Udemy -> Udemy: Search course catalog\nFilter by: AWS keyword\nLevel: Beginner\nSort: By rating (desc)
+        
+        Udemy --> APIAgg: {\n  results: [\n    {\n      id: "udemy_123",\n      title: "AWS Certified Solutions Architect - Associate",\n      instructor: "Stephane Maarek",\n      rating: 4.7,\n      reviewCount: 156789,\n      price: 84.99,\n      discountedPrice: 12.99,\n      duration: "27 hours",\n      level: "BEGINNER",\n      url: "https://udemy.com/...",\n      thumbnail: "https://...",\n      enrollmentCount: 500000,\n      lastUpdated: "2025-09-15"\n    },\n    ... 9 more courses\n  ],\n  total: 234\n}
+        deactivate Udemy
+        
+    else Coursera API Call
+        APIAgg -> Coursera: GET /api/courses.v1?\nq=search&query=AWS beginner\n&fields=name,photoUrl,partners
+        activate Coursera
+        
+        Coursera -> Coursera: Search course catalog\nFilter by: AWS keyword\nLevel: Introductory/Beginner\nSort: By popularity
+        
+        Coursera --> APIAgg: {\n  elements: [\n    {\n      id: "coursera_456",\n      name: "AWS Fundamentals Specialization",\n      partners: ["Amazon Web Services"],\n      rating: 4.6,\n      enrollmentCount: 89000,\n      duration: "4 months (7 hrs/week)",\n      level: "BEGINNER",\n      price: "Free to audit, $49/month for certificate",\n      url: "https://coursera.org/...",\n      photoUrl: "https://...",\n      skills: ["AWS", "Cloud Computing", "EC2", "S3"]\n    },\n    ... 7 more courses\n  ],\n  total: 45\n}
+        deactivate Coursera
+        
+    else YouTube API Call
+        APIAgg -> YouTube: GET /youtube/v3/search?\nq=AWS tutorial beginner\n&type=video&videoDuration=long\n&order=relevance&maxResults=10
+        activate YouTube
+        
+        YouTube -> YouTube: Search videos\nFilter by:\n- Query: "AWS tutorial beginner"\n- Duration: Long (>20 min)\n- Type: Video\nSort: By relevance
+        
+        YouTube --> APIAgg: {\n  items: [\n    {\n      id: {videoId: "yt_abc123"},\n      snippet: {\n        title: "AWS Tutorial For Beginners | AWS Full Course",\n        channelTitle: "Simplilearn",\n        description: "Complete AWS tutorial...",\n        publishedAt: "2024-08-10",\n        thumbnails: {...}\n      },\n      contentDetails: {\n        duration: "PT10H30M" (10.5 hours)\n      },\n      statistics: {\n        viewCount: 1250000,\n        likeCount: 45000\n      }\n    },\n    ... 9 more videos\n  ],\n  total: 1000+\n}
+        deactivate YouTube
+    end
+    
+    APIAgg -> APIAgg: **Aggregate all results:**\n\nUdemy: 10 courses\nCoursera: 8 courses\nYouTube: 10 videos\n\n**Total: 28 resources**
+    
+    APIAgg --> CourseRecSvc: {\n  sources: {\n    udemy: [...10 courses],\n    coursera: [...8 courses],\n    youtube: [...10 videos]\n  },\n  totalCount: 28\n}
+    deactivate APIAgg
+    
+    == Step 4: Normalize & Standardize Data ==
+    
+    CourseRecSvc -> CourseRecSvc: Normalize course data:\n\nFor each source:\n  Map to unified schema:\n  {\n    id: "source_id",\n    source: "UDEMY|COURSERA|YOUTUBE",\n    title: "...",\n    instructor/channel: "...",\n    rating: 0-5 scale,\n    reviewCount: number,\n    price: {\n      amount: number,\n      currency: "USD",\n      isFree: boolean\n    },\n    duration: "X hours" or "X weeks",\n    level: "BEGINNER|INTERMEDIATE|ADVANCED",\n    url: "...",\n    thumbnail: "...",\n    skills: [...],\n    lastUpdated: "YYYY-MM-DD"\n  }
+    
+    == Step 5: Filter Courses ==
+    
+    CourseRecSvc -> CourseRecSvc: Apply filters:\n\n1. **Quality filter:**\n   - Minimum rating: 4.0/5.0\n   - Minimum reviews: 100 (Udemy/Coursera)\n   - Minimum views: 10,000 (YouTube)\n   \n   28 courses → 22 courses remain
+    
+    CourseRecSvc -> CourseRecSvc: 2. **Relevance filter:**\n   - Title must contain "AWS"\n   - Content matches beginner level\n   - Recently updated (< 2 years old)\n   \n   22 courses → 18 courses remain
+    
+    CourseRecSvc -> CourseRecSvc: 3. **Diversity filter:**\n   - Mix of paid and free\n   - Mix of video and interactive\n   - Different instructors/channels\n   \n   18 courses (well balanced)
+    
+    == Step 6: Rank Courses by Relevance ==
+    
+    CourseRecSvc -> CourseRanker: rankCourses(filteredCourses, userId, skill)
+    activate CourseRanker
+    
+    CourseRanker -> DB: SELECT saved_course_id, completed_course_id, \npreferred_learning_style\nFROM user_learning_preferences\nWHERE user_id = 123
+    activate DB
+    DB --> CourseRanker: {preferredStyle: "VIDEO", \n completedCourses: []}
+    deactivate DB
+    
+    CourseRanker -> CourseRanker: **Calculate relevance score for each course:**\n\n**Ranking Formula:**\nScore = (Quality × 40%) + \n        (Popularity × 25%) + \n        (Recency × 15%) + \n        (Price Value × 10%) + \n        (User Preference × 10%)
+    
+    CourseRanker -> CourseRanker: **Example: Udemy AWS Course**\n\nQuality (40%):\n- Rating: 4.7/5.0 = 94%\n- Reviews: 156,789 (very high) = 100%\n- Weighted: (94 + 100) / 2 = 97%\n→ 97% × 0.40 = 38.8 points\n\nPopularity (25%):\n- Enrollments: 500,000 (very high) = 100%\n→ 100% × 0.25 = 25 points\n\nRecency (15%):\n- Last updated: 2 months ago = 100%\n→ 100% × 0.15 = 15 points\n\nPrice Value (10%):\n- Original: $84.99, Now: $12.99 (85% off) = 95%\n→ 95% × 0.10 = 9.5 points\n\nUser Preference (10%):\n- Format matches (Video) = 100%\n→ 100% × 0.10 = 10 points\n\n**Total Score: 98.3/100**
+    
+    CourseRanker -> CourseRanker: Rank all courses:\n\n1. Udemy - AWS Solutions Architect (98.3)\n2. Coursera - AWS Fundamentals (95.7)\n3. YouTube - Simplilearn AWS Tutorial (92.4)\n4. Udemy - AWS for Beginners (89.2)\n5. Coursera - Cloud Computing Basics (87.8)\n6. YouTube - FreeCodeCamp AWS (85.3)\n7. Udemy - AWS Essentials (82.1)\n8. Coursera - AWS Cloud Practitioner (79.5)\n9. YouTube - Tech With Tim AWS (76.2)\n10. Udemy - AWS Masterclass (73.8)\n... (8 more)\n\nTop 10 selected for recommendation
+    
+    CourseRanker --> CourseRecSvc: {rankedCourses: [top 10]}
+    deactivate CourseRanker
+    
+    == Step 7: Enrich with User-specific Data ==
+    
+    CourseRecSvc -> SavedCourseRepo: findSavedCoursesByUser(userId)
+    activate SavedCourseRepo
+    SavedCourseRepo -> DB: SELECT course_external_id, source\nFROM saved_courses\nWHERE user_id = 123
+    activate DB
+    DB --> SavedCourseRepo: {savedCourseIds: ["udemy_789", "coursera_321"]}
+    deactivate DB
+    SavedCourseRepo --> CourseRecSvc: Saved course IDs
+    deactivate SavedCourseRepo
+    
+    CourseRecSvc -> CourseRecSvc: Mark saved courses:\nFor each course:\n  if course.id in savedCourseIds:\n    course.isSaved = true
+    
+    == Step 8: Format Final Recommendations ==
+    
+    CourseRecSvc -> CourseRecSvc: Format recommendations:\n[\n  {\n    id: "udemy_123",\n    source: "UDEMY",\n    title: "AWS Certified Solutions Architect - Associate",\n    instructor: "Stephane Maarek",\n    rating: 4.7,\n    reviewCount: 156789,\n    price: {\n      original: 84.99,\n      current: 12.99,\n      currency: "USD",\n      isFree: false,\n      discount: "85% off"\n    },\n    duration: "27 hours",\n    level: "BEGINNER",\n    skills: ["AWS", "EC2", "S3", "Lambda", "CloudFormation"],\n    url: "https://udemy.com/...",\n    thumbnail: "https://...",\n    enrollmentCount: 500000,\n    lastUpdated: "2025-09-15",\n    relevanceScore: 98.3,\n    isSaved: false,\n    estimatedCompletionTime: "4 weeks (7 hrs/week)",\n    certificate: true,\n    features: [\n      "27 hours on-demand video",\n      "Practice tests",\n      "Lifetime access",\n      "Certificate of completion"\n    ],\n    reasons: [\n      "Highly rated by 156k+ students",\n      "Recently updated content",\n      "Covers AWS fundamentals comprehensively"\n    ]\n  },\n  ... 9 more courses\n]
+    
+    CourseRecSvc --> LearningSvc: {recommendations: [10 courses]}
+    deactivate CourseRecSvc
+    
+    == Step 9: Cache Recommendations ==
+    
+    LearningSvc -> Redis: SETEX courses:aws:beginner:10\nVALUE: {recommendations JSON}\nTTL: 6 hours
+    activate Redis
+    Redis --> LearningSvc: Cached
+    deactivate Redis
+    
+    note right of Redis
+    Cache TTL: 6 hours
+    Course prices and availability
+    change frequently, so shorter TTL
+    
+    Cache key includes:
+    - Skill name
+    - Level
+    - Limit (number of results)
+    end note
+    
+    == Step 10: Track Recommendation Event ==
+    
+    LearningSvc -> DB: INSERT INTO course_recommendation_events\n(user_id, skill, level, course_ids, recommended_at)\nVALUES (123, 'AWS', 'BEGINNER', \nARRAY['udemy_123', 'coursera_456', ...], NOW())
+    activate DB
+    DB --> LearningSvc: Event tracked
+    deactivate DB
+    
+    LearningSvc --> Gateway: 200 OK\n{\n  recommendations: [10 courses],\n  totalFromAllSources: 28,\n  sources: {\n    udemy: 4,\n    coursera: 3,\n    youtube: 3\n  },\n  filters: {...},\n  generatedAt: "2025-10-27T15:30:00Z"\n}
+    deactivate LearningSvc
+    
+    Gateway --> User: ✓ Course recommendations ready
+    deactivate Gateway
+end
+
+note over User
+**AWS Course Recommendations**
+
+📚 Top 10 courses for you
+
+[1] 🏆 AWS Certified Solutions Architect
+    Source: Udemy | ⭐ 4.7 (156k reviews)
+    💰 $12.99 (85% off) | ⏱️ 27 hours
+    🎯 Relevance: 98%
+    ✅ Certificate | Recently updated
+    
+[2] AWS Fundamentals Specialization
+    Source: Coursera | ⭐ 4.6 (89k enrolled)
+    💰 Free (audit) / $49/mo (cert) | ⏱️ 4 months
+    🎯 Relevance: 96%
+    🏢 By Amazon Web Services
+    
+[3] 🎥 AWS Tutorial For Beginners (FREE)
+    Source: YouTube | Simplilearn
+    👁️ 1.2M views | ⏱️ 10.5 hours
+    🎯 Relevance: 92%
+    💯 Completely free
+    
+**Why these courses?**
+• Highly rated by thousands of learners
+• Match your beginner level
+• Recently updated content
+• Mix of paid certification courses and free tutorials
+
+**Filters Applied:**
+✓ Skill: AWS
+✓ Level: Beginner
+✓ Min Rating: 4.0+
+end note
+
+note over User, Redis
+**Multi-source Aggregation Strategy:**
+
+**Source Priority:**
+1. **Udemy** - Best for structured paid courses with certificates
+2. **Coursera** - Best for university-backed content and specializations
+3. **YouTube** - Best for free tutorials and quick learning
+
+**Parallel API Calls:**
+- Execute all 3 API calls simultaneously
+- Timeout: 5 seconds per API
+- Fallback: Continue with available results if one API fails
+- Average response time: 2-3 seconds (parallel)
+
+**Ranking Algorithm:**
+Quality (40%): Rating + Review count
+Popularity (25%): Enrollment/View count
+Recency (15%): Last updated date
+Price Value (10%): Discount percentage, free bonus
+User Preference (10%): Learning style match
+
+**Data Normalization:**
+- Convert all ratings to 0-5 scale
+- Standardize duration format
+- Map difficulty levels
+- Unify price structure
+
+**Cache Strategy:**
+- TTL: 6 hours (courses change frequently)
+- Key: skill:level:limit
+- Invalidated on: New courses added to platforms
+- Hit rate: ~40-50% (high variability)
+
+**API Rate Limits:**
+- Udemy: 100 requests/hour
+- Coursera: 10,000 requests/day
+- YouTube: 10,000 units/day (search = 100 units)
+end note
+
+@enduml

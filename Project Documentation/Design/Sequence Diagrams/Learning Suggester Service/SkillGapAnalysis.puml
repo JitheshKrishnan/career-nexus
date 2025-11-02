@@ -1,0 +1,294 @@
+@startuml Skill Gap Analysis
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Learning Suggester\nService" as LearningSvc #004d26
+participant "Skill Gap Analyzer" as GapAnalyzer #004d26
+participant "Resume Service" as ResumeSvc #004d26
+participant "Job Matcher Service" as JobMatcherSvc #004d26
+participant "Priority Scorer" as PriorityScorer #4d4d00
+participant "Skill Mapping\nRepository" as SkillMapRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+participant "Redis Cache" as Redis #661a1a
+
+title Skill Gap Analysis Flow
+
+== Step 1: Request Skill Gap Analysis ==
+
+User -> Gateway: POST /api/learning/skill-gap-analysis\n{\n  targetJobId: 456 (optional),\n  targetRole: "Senior Backend Developer" (optional)\n}\nAuthorization: Bearer {accessToken}
+activate Gateway
+
+Gateway -> Gateway: Validate JWT token\nExtract userId: 123
+
+Gateway -> LearningSvc: POST /learning/skill-gap-analysis\n{userId: 123, targetJobId: 456, targetRole: "..."}
+activate LearningSvc
+
+== Step 2: Check Cached Analysis ==
+
+LearningSvc -> LearningSvc: Generate cache key:\nkey = "skill_gap:user_123:job_456"
+
+LearningSvc -> Redis: GET skill_gap:{key}
+activate Redis
+
+alt Cache hit (recent analysis)
+    Redis --> LearningSvc: {cachedAnalysis, generatedAt}
+    deactivate Redis
+    
+    LearningSvc -> LearningSvc: Check cache freshness:\nAge < 24 hours? ✓
+    
+    LearningSvc --> Gateway: 200 OK\n{analysisData from cache}
+    deactivate LearningSvc
+    Gateway --> User: Analysis results (cached)
+    deactivate Gateway
+    
+else Cache miss or stale
+    Redis --> LearningSvc: null
+    deactivate Redis
+    
+    == Step 3: Fetch User's Current Skills ==
+    
+    LearningSvc -> ResumeSvc: GET /resumes/user/{userId}/skills
+    activate ResumeSvc
+    
+    ResumeSvc -> DB: SELECT skill_name, skill_category, proficiency_level, \nyears_of_experience\nFROM resume_skills rs\nJOIN resumes r ON rs.resume_id = r.id\nWHERE r.user_id = 123 AND r.parse_status = 'COMPLETED'\nORDER BY r.uploaded_at DESC LIMIT 1
+    activate DB
+    DB --> ResumeSvc: User skills data
+    deactivate DB
+    
+    ResumeSvc --> LearningSvc: {\n  currentSkills: [\n    {name: "Java", category: "TECHNICAL", proficiency: "ADVANCED", years: 5},\n    {name: "Spring Boot", category: "TECHNICAL", proficiency: "ADVANCED", years: 4},\n    {name: "MySQL", category: "TECHNICAL", proficiency: "ADVANCED", years: 5},\n    {name: "Docker", category: "TECHNICAL", proficiency: "INTERMEDIATE", years: 2},\n    {name: "Python", category: "TECHNICAL", proficiency: "INTERMEDIATE", years: 2},\n    {name: "Git", category: "TOOL", proficiency: "ADVANCED", years: 5}\n  ],\n  totalSkills: 6\n}
+    deactivate ResumeSvc
+    
+    note right of ResumeSvc
+    **User's Current Skills:**
+    ✅ Java (Advanced, 5 years)
+    ✅ Spring Boot (Advanced, 4 years)
+    ✅ MySQL (Advanced, 5 years)
+    ✅ Docker (Intermediate, 2 years)
+    ✅ Python (Intermediate, 2 years)
+    ✅ Git (Advanced, 5 years)
+    end note
+    
+    == Step 4: Fetch Target Job/Role Requirements ==
+    
+    alt Target Job ID provided
+        LearningSvc -> JobMatcherSvc: GET /jobs/{targetJobId}/requirements
+        activate JobMatcherSvc
+        
+        JobMatcherSvc -> DB: SELECT required_skills, preferred_skills, \nexperience_level, title, description\nFROM jobs WHERE id = 456
+        activate DB
+        DB --> JobMatcherSvc: Job requirements
+        deactivate DB
+        
+        JobMatcherSvc --> LearningSvc: {\n  jobTitle: "Senior Backend Developer",\n  requiredSkills: ["Java", "Spring Boot", "Microservices", \n                   "Kubernetes", "AWS", "REST API"],\n  preferredSkills: ["GraphQL", "Kafka", "Redis", "CI/CD"],\n  experienceLevel: "SENIOR" (5-8 years)\n}
+        deactivate JobMatcherSvc
+        
+    else Target Role provided (no specific job)
+        LearningSvc -> SkillMapRepo: getSkillsForRole(targetRole)
+        activate SkillMapRepo
+        
+        SkillMapRepo -> DB: SELECT skill_name, skill_importance, skill_category\nFROM role_skill_mapping\nWHERE role_name = 'Senior Backend Developer'\nORDER BY skill_importance DESC
+        activate DB
+        
+        note right of DB
+        Role-Skill Mapping Database
+        contains industry-standard
+        skill requirements for common roles
+        end note
+        
+        DB --> SkillMapRepo: Role skill requirements
+        deactivate DB
+        
+        SkillMapRepo --> LearningSvc: {\n  requiredSkills: ["Java", "Spring Boot", "Microservices", \n                   "Kubernetes", "System Design"],\n  preferredSkills: ["AWS", "Kafka", "Redis"]\n}
+        deactivate SkillMapRepo
+    end
+    
+    note right of JobMatcherSvc
+    **Target Job Requirements:**
+    Required (Must-have):
+    - Java
+    - Spring Boot
+    - Microservices ❌
+    - Kubernetes ❌
+    - AWS ❌
+    - REST API ✅ (assumed)
+    
+    Preferred (Nice-to-have):
+    - GraphQL ❌
+    - Kafka ❌
+    - Redis ❌
+    - CI/CD ❌
+    end note
+    
+    == Step 5: Identify Skill Gaps ==
+    
+    LearningSvc -> GapAnalyzer: analyzeSkillGaps(currentSkills, requiredSkills, preferredSkills)
+    activate GapAnalyzer
+    
+    GapAnalyzer -> GapAnalyzer: **Compare skills:**\n\nFor each required skill:\n  if skill in currentSkills:\n    status = "HAVE"\n  else:\n    status = "MISSING"\n    add to requiredGaps
+    
+    GapAnalyzer -> GapAnalyzer: **Required Skills Analysis:**\n\n✅ Java - HAVE (Advanced)\n✅ Spring Boot - HAVE (Advanced)\n❌ Microservices - MISSING (Critical gap)\n❌ Kubernetes - MISSING (Critical gap)\n❌ AWS - MISSING (Critical gap)\n✅ REST API - HAVE (Intermediate, needs improvement)
+    
+    GapAnalyzer -> GapAnalyzer: **Preferred Skills Analysis:**\n\n❌ GraphQL - MISSING (Optional)\n❌ Kafka - MISSING (Optional)\n❌ Redis - MISSING (Optional)\n❌ CI/CD - MISSING (Optional)
+    
+    GapAnalyzer -> GapAnalyzer: **Categorize gaps:**\n\nCritical (Required but missing):\n- Microservices\n- Kubernetes\n- AWS\n\nImportant (Required but needs improvement):\n- REST API (have intermediate, need advanced)\n\nOptional (Preferred but missing):\n- GraphQL\n- Kafka\n- Redis\n- CI/CD
+    
+    GapAnalyzer --> LearningSvc: {\n  matchedSkills: ["Java", "Spring Boot", "REST API"],\n  missingRequiredSkills: ["Microservices", "Kubernetes", "AWS"],\n  missingPreferredSkills: ["GraphQL", "Kafka", "Redis", "CI/CD"],\n  skillsNeedingImprovement: ["REST API"],\n  requiredMatchRate: 0.50 (3/6 required skills matched),\n  preferredMatchRate: 0.00 (0/4 preferred skills matched)\n}
+    deactivate GapAnalyzer
+    
+    == Step 6: Prioritize Skill Gaps ==
+    
+    LearningSvc -> PriorityScorer: prioritizeGaps(missingSkills, jobMarketData)
+    activate PriorityScorer
+    
+    PriorityScorer -> DB: SELECT skill_name, job_demand_score, avg_salary_impact, \nlearning_difficulty\nFROM skill_market_data\nWHERE skill_name IN ('Microservices', 'Kubernetes', 'AWS', \n                     'GraphQL', 'Kafka', 'Redis', 'CI/CD')
+    activate DB
+    
+    note right of DB
+    Skill Market Data includes:
+    - Job demand frequency
+    - Salary impact
+    - Learning difficulty (1-10)
+    - Trending score
+    end note
+    
+    DB --> PriorityScorer: Market data for each skill
+    deactivate DB
+    
+    PriorityScorer -> PriorityScorer: **Calculate priority score for each gap:**\n\n**Formula:**\nPriority = (Job Requirement × 40%) + \n           (Market Demand × 30%) + \n           (Salary Impact × 20%) - \n           (Learning Difficulty × 10%)
+    
+    PriorityScorer -> PriorityScorer: **Microservices:**\n- Required: YES (40 points)\n- Market demand: HIGH (30 points)\n- Salary impact: HIGH (18 points)\n- Difficulty: MEDIUM (5 points penalty)\n**Priority Score: 83/100** → HIGH
+    
+    PriorityScorer -> PriorityScorer: **Kubernetes:**\n- Required: YES (40 points)\n- Market demand: VERY HIGH (30 points)\n- Salary impact: HIGH (20 points)\n- Difficulty: HIGH (8 points penalty)\n**Priority Score: 82/100** → HIGH
+    
+    PriorityScorer -> PriorityScorer: **AWS:**\n- Required: YES (40 points)\n- Market demand: VERY HIGH (30 points)\n- Salary impact: VERY HIGH (20 points)\n- Difficulty: MEDIUM (6 points penalty)\n**Priority Score: 84/100** → HIGH
+    
+    PriorityScorer -> PriorityScorer: **GraphQL:**\n- Required: NO (15 points)\n- Market demand: MEDIUM (18 points)\n- Salary impact: MEDIUM (12 points)\n- Difficulty: LOW (3 points penalty)\n**Priority Score: 42/100** → MEDIUM
+    
+    PriorityScorer -> PriorityScorer: **Rank by priority score:**\n1. AWS (84) - HIGH\n2. Microservices (83) - HIGH\n3. Kubernetes (82) - HIGH\n4. CI/CD (58) - MEDIUM\n5. Kafka (52) - MEDIUM\n6. GraphQL (42) - MEDIUM\n7. Redis (38) - LOW
+    
+    PriorityScorer --> LearningSvc: {\n  prioritizedGaps: [\n    {skill: "AWS", priority: "HIGH", score: 84, \n     estimatedLearningTime: "2-3 months"},\n    {skill: "Microservices", priority: "HIGH", score: 83, \n     estimatedLearningTime: "1-2 months"},\n    {skill: "Kubernetes", priority: "HIGH", score: 82, \n     estimatedLearningTime: "2-3 months"},\n    {skill: "CI/CD", priority: "MEDIUM", score: 58, \n     estimatedLearningTime: "1 month"},\n    {skill: "Kafka", priority: "MEDIUM", score: 52, \n     estimatedLearningTime: "1 month"},\n    {skill: "GraphQL", priority: "MEDIUM", score: 42, \n     estimatedLearningTime: "2 weeks"},\n    {skill: "Redis", priority: "LOW", score: 38, \n     estimatedLearningTime: "1 week"}\n  ]\n}
+    deactivate PriorityScorer
+    
+    == Step 7: Generate Recommendations ==
+    
+    LearningSvc -> LearningSvc: Generate actionable recommendations:\n\n**Immediate Actions (High Priority):**\n1. Start with AWS fundamentals (EC2, S3, Lambda)\n2. Learn Microservices architecture patterns\n3. Master Kubernetes basics and deployment\n\n**Short-term Goals (Medium Priority):**\n4. Understand CI/CD pipelines (Jenkins/GitHub Actions)\n5. Learn Kafka for event-driven architecture\n6. Explore GraphQL APIs\n\n**Long-term Goals (Low Priority):**\n7. Master Redis for caching strategies
+    
+    LearningSvc -> LearningSvc: Calculate overall readiness:\n\nCurrent match: 50% of required skills\nWith high-priority skills: 100% of required\nEstimated time to job-ready: 4-6 months
+    
+    == Step 8: Compile Final Analysis ==
+    
+    LearningSvc -> LearningSvc: Build comprehensive analysis report:\n{\n  userId: 123,\n  targetJob: {id: 456, title: "Senior Backend Developer"},\n  currentSkills: [...6 skills],\n  matchedSkills: ["Java", "Spring Boot", "REST API"],\n  skillGaps: {\n    critical: ["Microservices", "Kubernetes", "AWS"],\n    important: ["REST API"],\n    optional: ["GraphQL", "Kafka", "Redis", "CI/CD"]\n  },\n  prioritizedGaps: [...7 gaps with scores],\n  requiredMatchRate: 50%,\n  preferredMatchRate: 0%,\n  overallReadiness: 50%,\n  estimatedTimeToReady: "4-6 months",\n  recommendations: [...],\n  nextSteps: [\n    "Enroll in AWS Solutions Architect course",\n    "Complete Microservices design patterns course",\n    "Practice Kubernetes with hands-on labs"\n  ]\n}
+    
+    == Step 9: Cache Analysis ==
+    
+    LearningSvc -> Redis: SETEX skill_gap:user_123:job_456\nVALUE: {analysisReport JSON}\nTTL: 24 hours
+    activate Redis
+    Redis --> LearningSvc: Cached
+    deactivate Redis
+    
+    == Step 10: Store Analysis History ==
+    
+    LearningSvc -> DB: INSERT INTO skill_gap_analysis_history\n(user_id, target_job_id, matched_skills, missing_skills, \nprioritized_gaps, analyzed_at)\nVALUES (123, 456, ARRAY[...], ARRAY[...], JSONB(...), NOW())
+    activate DB
+    DB --> LearningSvc: Analysis history saved
+    deactivate DB
+    
+    LearningSvc --> Gateway: 200 OK\n{analysisReport}
+    deactivate LearningSvc
+    
+    Gateway --> User: ✓ Skill gap analysis complete
+    deactivate Gateway
+end
+
+note over User
+**Skill Gap Analysis Report**
+
+🎯 Job Readiness: 50% (3/6 required skills)
+
+**Skills You Have:** ✅
+• Java (Advanced, 5 years)
+• Spring Boot (Advanced, 4 years)
+• MySQL (Advanced, 5 years)
+
+**Critical Gaps** (Required): ❌
+1. AWS (Priority: 84/100) - Est. 2-3 months
+2. Microservices (Priority: 83/100) - Est. 1-2 months
+3. Kubernetes (Priority: 82/100) - Est. 2-3 months
+
+**Skills to Improve:**
+• REST API (Intermediate → Advanced)
+
+**Optional Skills** (Nice-to-have):
+• CI/CD (Priority: 58/100)
+• Kafka (Priority: 52/100)
+• GraphQL (Priority: 42/100)
+• Redis (Priority: 38/100)
+
+**📅 Timeline to Job-Ready: 4-6 months**
+
+**Next Steps:**
+1. Start AWS Solutions Architect course
+2. Complete Microservices patterns tutorial
+3. Practice Kubernetes deployments
+end note
+
+note over User, Redis
+**Priority Scoring Formula:**
+Priority = (Job Requirement × 40%) + 
+           (Market Demand × 30%) + 
+           (Salary Impact × 20%) - 
+           (Learning Difficulty × 10%)
+
+**Score Ranges:**
+- 80-100: HIGH priority
+- 50-79: MEDIUM priority
+- 0-49: LOW priority
+
+**Market Data Sources:**
+- Job posting frequency (last 90 days)
+- Salary surveys (Glassdoor, LinkedIn)
+- Learning platform difficulty ratings
+- Industry skill demand trends
+
+**Cache Strategy:**
+- TTL: 24 hours
+- Invalidated on resume update
+- Invalidated on job requirements change
+end note
+
+@enduml

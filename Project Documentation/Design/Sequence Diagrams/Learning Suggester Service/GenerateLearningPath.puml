@@ -1,0 +1,239 @@
+@startuml Generate Learning Path
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Job Seeker" as User #003366
+participant "Gateway Service" as Gateway #4d4d00
+participant "Learning Suggester\nService" as LearningSvc #004d26
+participant "Learning Path\nGenerator" as PathGen #004d26
+participant "Skill Dependency\nResolver" as DepResolver #4d4d00
+participant "Course\nRecommendation Service" as CourseRecSvc #004d26
+participant "Learning Path\nRepository" as PathRepo #661a1a
+participant "PostgreSQL DB" as DB #661a1a
+
+title Generate Learning Path Flow
+
+== Step 1: Request Learning Path Generation ==
+
+User -> Gateway: POST /api/learning/paths/generate\n{\n  targetJobId: 456,\n  focusSkills: ["AWS", "Kubernetes", "Microservices"],\n  timeCommitment: "10 hours/week",\n  deadline: "2026-03-01" (optional)\n}
+activate Gateway
+
+Gateway -> Gateway: Validate JWT\nExtract userId: 123
+
+Gateway -> LearningSvc: POST /learning/paths/generate\n{userId: 123, targetJobId: 456, ...}
+activate LearningSvc
+
+== Step 2: Get Skill Gap Analysis ==
+
+LearningSvc -> LearningSvc: Fetch or compute skill gap analysis\n(from previous step or trigger new analysis)
+
+note over LearningSvc
+Skill Gap Analysis Result:
+Critical gaps: AWS, Kubernetes, Microservices
+Current skills: Java, Spring Boot, MySQL
+end note
+
+LearningSvc -> PathGen: generatePath(userId, skillGaps, timeCommitment, deadline)
+activate PathGen
+
+== Step 3: Resolve Skill Dependencies ==
+
+PathGen -> DepResolver: resolveDependencies(skillGaps)
+activate DepResolver
+
+DepResolver -> DB: SELECT skill_name, prerequisite_skills, learning_order\nFROM skill_dependency_graph\nWHERE skill_name IN ('AWS', 'Kubernetes', 'Microservices')
+activate DB
+
+note right of DB
+Skill Dependency Graph stores:
+- Prerequisite relationships
+- Recommended learning order
+- Co-requisite skills
+end note
+
+DB --> DepResolver: Skill dependencies
+deactivate DB
+
+DepResolver -> DepResolver: **Build dependency tree:**\n\n**AWS:**\n- Prerequisites: None (foundational)\n- Co-requisites: Linux basics (assumed known)\n- Learning order: 1\n\n**Microservices:**\n- Prerequisites: REST API, Docker basics\n- Co-requisites: Spring Boot (user already has)\n- Learning order: 2\n\n**Kubernetes:**\n- Prerequisites: Docker, Container concepts\n- Co-requisites: YAML, Cloud fundamentals\n- Learning order: 3
+
+DepResolver -> DepResolver: **Topological sort:**\nBased on dependencies:\n\nPhase 1 (Foundational):\n- AWS Fundamentals\n- Docker Basics\n\nPhase 2 (Core):\n- Microservices Architecture\n- Container Orchestration Basics\n\nPhase 3 (Advanced):\n- Kubernetes Fundamentals\n- Kubernetes Advanced (Deployments, Services)\n\nPhase 4 (Optional):\n- Service Mesh (Istio)\n- GitOps with ArgoCD
+
+DepResolver --> PathGen: {\n  orderedSkills: [\n    {skill: "AWS", phase: 1, prerequisites: []},\n    {skill: "Docker", phase: 1, prerequisites: []},\n    {skill: "Microservices", phase: 2, \n     prerequisites: ["Docker", "REST API"]},\n    {skill: "Kubernetes", phase: 3, \n     prerequisites: ["Docker", "Microservices"]}\n  ]\n}
+deactivate DepResolver
+
+== Step 4: Fetch Courses for Each Skill ==
+
+loop For each skill in orderedSkills
+    PathGen -> CourseRecSvc: getCourses(skill, level: BEGINNER, limit: 3)
+    activate CourseRecSvc
+    
+    note over CourseRecSvc
+    Returns top 3 courses
+    from previous aggregation step
+    (Udemy, Coursera, YouTube)
+    end note
+    
+    CourseRecSvc --> PathGen: {topCourses: [3 courses for skill]}
+    deactivate CourseRecSvc
+end
+
+PathGen -> PathGen: Courses fetched for all skills:\n\nAWS → 3 courses\nDocker → 3 courses\nMicroservices → 3 courses\nKubernetes → 3 courses\n\nTotal: 12 course options
+
+== Step 5: Calculate Time Estimates ==
+
+PathGen -> PathGen: **Calculate learning duration:**\n\nFor each skill:\n  Select recommended course (highest ranked)\n  Extract duration\n  Apply user's time commitment\n\n**AWS:**\n- Course: "AWS Solutions Architect" (27 hours)\n- User commitment: 10 hrs/week\n- Duration: 3 weeks\n\n**Docker:**\n- Course: "Docker for Beginners" (8 hours)\n- User commitment: 10 hrs/week\n- Duration: 1 week\n\n**Microservices:**\n- Course: "Microservices with Spring Boot" (15 hours)\n- User commitment: 10 hrs/week\n- Duration: 2 weeks\n\n**Kubernetes:**\n- Course: "Kubernetes Fundamentals" (20 hours)\n- User commitment: 10 hrs/week\n- Duration: 2 weeks\n\n**Total Duration: 8 weeks**
+
+PathGen -> PathGen: Add buffer time:\n8 weeks × 1.2 (20% buffer) = 9.6 weeks\n**Estimated completion: ~10 weeks**
+
+== Step 6: Create Milestones ==
+
+PathGen -> PathGen: Generate milestones:\n\n**Milestone 1: Cloud Fundamentals** (Week 1-3)\n- Goal: Complete AWS basics\n- Courses: AWS Solutions Architect\n- Deliverable: Deploy simple app to AWS\n- Checkpoint: Pass AWS practice test\n\n**Milestone 2: Containerization** (Week 4)\n- Goal: Master Docker\n- Courses: Docker for Beginners\n- Deliverable: Dockerize Spring Boot app\n- Checkpoint: Create multi-container app\n\n**Milestone 3: Distributed Systems** (Week 5-6)\n- Goal: Understand Microservices\n- Courses: Microservices with Spring Boot\n- Deliverable: Build 3-service architecture\n- Checkpoint: Implement service communication\n\n**Milestone 4: Orchestration** (Week 7-10)\n- Goal: Deploy with Kubernetes\n- Courses: Kubernetes Fundamentals\n- Deliverable: Deploy microservices to K8s\n- Checkpoint: Configure auto-scaling
+
+== Step 7: Build Learning Path Structure ==
+
+PathGen -> PathGen: Compile learning path:\n{\n  userId: 123,\n  title: "Backend Developer Career Path",\n  targetJob: {id: 456, title: "Senior Backend Developer"},\n  focusSkills: ["AWS", "Kubernetes", "Microservices"],\n  \n  phases: [\n    {\n      id: 1,\n      name: "Cloud Fundamentals",\n      duration: "3 weeks",\n      skills: ["AWS"],\n      courses: [...],\n      milestone: {\n        title: "Cloud Fundamentals",\n        deliverable: "Deploy app to AWS",\n        checkpoint: "Pass practice test"\n      }\n    },\n    {\n      id: 2,\n      name: "Containerization",\n      duration: "1 week",\n      skills: ["Docker"],\n      courses: [...],\n      milestone: {...}\n    },\n    {\n      id: 3,\n      name: "Distributed Systems",\n      duration: "2 weeks",\n      skills: ["Microservices"],\n      courses: [...],\n      milestone: {...}\n    },\n    {\n      id: 4,\n      name: "Orchestration",\n      duration: "4 weeks",\n      skills: ["Kubernetes"],\n      courses: [...],\n      milestone: {...}\n    }\n  ],\n  \n  timeline: {\n    startDate: "2025-11-01",\n    estimatedEndDate: "2026-01-10",\n    totalDuration: "10 weeks",\n    timeCommitment: "10 hours/week",\n    totalHours: 100\n  },\n  \n  progress: {\n    completedPhases: 0,\n    completedCourses: 0,\n    completionPercentage: 0\n  },\n  \n  recommendations: [\n    "Start with AWS to build cloud foundation",\n    "Practice hands-on labs after each module",\n    "Join online communities for support",\n    "Build a portfolio project using all skills"\n  ]\n}
+
+PathGen --> LearningSvc: {learningPath}
+deactivate PathGen
+
+== Step 8: Store Learning Path ==
+
+LearningSvc -> PathRepo: save(learningPath)
+activate PathRepo
+
+PathRepo -> DB: INSERT INTO learning_paths\n(user_id, title, target_job_id, focus_skills, \nphases, timeline, created_at, status)\nVALUES (123, 'Backend Developer Career Path', 456, \nARRAY['AWS', 'Kubernetes', 'Microservices'], \nJSONB(...), JSONB(...), NOW(), 'ACTIVE')
+activate DB
+DB --> PathRepo: Learning path ID: 789
+deactivate DB
+
+PathRepo -> DB: INSERT INTO learning_path_milestones\n(path_id, phase_id, title, deliverable, \ncheckpoint, target_date)\nVALUES (789, 1, 'Cloud Fundamentals', '...', '...', \n'2025-11-22'),\n... (3 more milestones)
+activate DB
+DB --> PathRepo: Milestones created
+deactivate DB
+
+PathRepo --> LearningSvc: {pathId: 789, saved: true}
+deactivate PathRepo
+
+== Step 9: Initialize Progress Tracking ==
+
+LearningSvc -> DB: INSERT INTO learning_progress\n(user_id, path_id, current_phase, \ncompleted_courses, started_at)\nVALUES (123, 789, 1, ARRAY[]::INTEGER[], NOW())
+activate DB
+DB --> LearningSvc: Progress initialized
+deactivate DB
+
+== Step 10: Send Notification ==
+
+LearningSvc -> LearningSvc: Trigger notification:\n"Your learning path is ready!\n10-week roadmap to become Senior Backend Developer"
+
+LearningSvc --> Gateway: 201 Created\n{\n  pathId: 789,\n  learningPath: {...},\n  message: "Learning path created successfully"\n}
+deactivate LearningSvc
+
+Gateway --> User: ✓ Learning path generated!
+deactivate Gateway
+
+note over User
+**Your Learning Path: Backend Developer**
+
+🎯 Goal: Senior Backend Developer
+⏱️ Duration: 10 weeks (10 hrs/week)
+📅 Start: Nov 1, 2025 → End: Jan 10, 2026
+
+**Phase 1: Cloud Fundamentals** (Weeks 1-3)
+├─ AWS Solutions Architect Course (27 hrs)
+├─ Practice Labs & Exercises
+└─ ✅ Milestone: Deploy app to AWS
+
+**Phase 2: Containerization** (Week 4)
+├─ Docker for Beginners (8 hrs)
+├─ Dockerize Spring Boot App
+└─ ✅ Milestone: Multi-container setup
+
+**Phase 3: Distributed Systems** (Weeks 5-6)
+├─ Microservices Architecture (15 hrs)
+├─ Build 3-service system
+└─ ✅ Milestone: Service communication
+
+**Phase 4: Orchestration** (Weeks 7-10)
+├─ Kubernetes Fundamentals (20 hrs)
+├─ Deploy to K8s cluster
+└─ ✅ Milestone: Auto-scaling setup
+
+**💡 Tips:**
+• Complete hands-on labs after each module
+• Build portfolio projects
+• Join AWS/K8s communities
+• Practice daily coding challenges
+
+**Start Learning →**
+end note
+
+note over User, DB
+**Learning Path Generation Algorithm:**
+
+**Step 1: Skill Dependency Resolution**
+- Use topological sort on skill graph
+- Identify prerequisites
+- Group into phases (foundational → advanced)
+
+**Step 2: Course Assignment**
+- Select top-rated course per skill
+- Mix paid certifications + free tutorials
+- Ensure recent content (<2 years old)
+
+**Step 3: Time Calculation**
+- Course duration ÷ Time commitment per week
+- Add 20% buffer for practice/projects
+- Calculate milestone dates
+
+**Step 4: Milestone Creation**
+- One milestone per phase
+- Include deliverable (project)
+- Include checkpoint (assessment)
+
+**Path Structure:**
+- Phases: Sequential learning stages
+- Milestones: Checkpoints with deliverables
+- Timeline: Start/end dates with estimates
+- Progress: Tracking completion
+
+**Adaptability:**
+- Path adjusts if user updates resume
+- Courses can be swapped
+- Timeline recalculated on delay
+- Additional skills can be added mid-path
+end note
+
+@enduml

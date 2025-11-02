@@ -1,0 +1,258 @@
+@startuml API Gateway Request Flow
+skinparam backgroundColor #0e1116
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontColor #?black:white
+skinparam defaultFontSize 12
+skinparam shadowing true
+
+skinparam sequence {
+    ArrowColor #00ffaa
+    ActorBorderColor #00bfff
+    ActorBackgroundColor #1a2432
+    ActorFontColor #ffffff
+    
+    ParticipantBorderColor #00bfff
+    ParticipantBackgroundColor #1e232b
+    ParticipantFontColor #ffffff
+    
+    LifeLineBorderColor #00bfff
+    LifeLineBackgroundColor #1a2432
+    
+    BoxBorderColor #00bfff
+    BoxBackgroundColor #0d1117
+    BoxFontColor #ffffff
+}
+
+skinparam sequenceGroup {
+  BorderColor white
+  BackgroundColor #1a1a1a
+  FontColor #ffffff
+}
+
+skinparam note {
+    BackgroundColor #2d343e
+    BorderColor #00ffaa
+    FontColor #cdd9e5
+}
+
+actor "Client\n(Web/Mobile App)" as Client #003366
+participant "API Gateway" as Gateway #4d4d00
+participant "Auth Filter" as AuthFilter #004d26
+participant "Rate Limiter" as RateLimiter #004d26
+participant "Service Discovery\n(Eureka)" as ServiceDiscovery #661a1a
+participant "Circuit Breaker\n(Resilience4j)" as CircuitBreaker #661a1a
+participant "Redis Cache" as Redis #661a1a
+participant "Resume Service" as TargetService #004d26
+participant "Monitoring\n(Prometheus)" as Monitoring #661a1a
+
+title API Gateway Request Flow (Successful Path)
+
+== Step 1: Client Makes Request ==
+
+Client -> Gateway: GET /api/resumes/user/123\nHeaders:\n  Authorization: Bearer eyJhbGciOiJIUzI1NiIs...\n  X-Request-ID: req_abc123\n  User-Agent: Mobile/Android
+activate Gateway
+
+Gateway -> Gateway: Generate Request Context:\n- Request ID: req_abc123\n- Timestamp: 2025-10-29T10:30:00Z\n- Client IP: 192.168.1.100\n- Endpoint: /api/resumes/user/123
+
+note right of Gateway
+Gateway intercepts all incoming requests
+and applies security & reliability filters
+end note
+
+== Step 2: JWT Authentication ==
+
+Gateway -> AuthFilter: validateToken(bearerToken)
+activate AuthFilter
+
+AuthFilter -> AuthFilter: Extract JWT from header\nToken: eyJhbGciOiJIUzI1NiIs...
+
+alt Token missing or malformed
+    AuthFilter --> Gateway: 401 Unauthorized\n{\n  error: "MISSING_TOKEN",\n  message: "Authorization header required"\n}
+    Gateway --> Client: 401 Unauthorized
+    deactivate AuthFilter
+    deactivate Gateway
+else Token present
+    
+    AuthFilter -> Redis: GET jwt:blacklist:eyJhbGc...
+    activate Redis
+    Redis --> AuthFilter: null (token not blacklisted)
+    deactivate Redis
+    
+    alt Token in blacklist
+        AuthFilter --> Gateway: 401 Unauthorized\n"Token has been revoked"
+        Gateway --> Client: 401 Unauthorized
+        deactivate AuthFilter
+        deactivate Gateway
+    else Token valid
+        
+        AuthFilter -> AuthFilter: **Verify JWT signature:**\n- Algorithm: HS256\n- Secret: ${jwt.secret}\n- Expiration: Check exp claim\n\nClaims extracted:\n- userId: 123\n- email: john.doe@example.com\n- roles: [USER]\n- exp: 1730383800 (valid)
+        
+        alt Token expired or invalid signature
+            AuthFilter --> Gateway: 401 Unauthorized\n{\n  error: "INVALID_TOKEN",\n  message: "Token expired or invalid signature"\n}
+            Gateway --> Client: 401 Unauthorized
+            deactivate AuthFilter
+            deactivate Gateway
+        else Token valid
+            
+            AuthFilter -> Gateway: Token Valid\n{\n  userId: 123,\n  email: "john.doe@example.com",\n  roles: ["USER"]\n}
+            deactivate AuthFilter
+            
+            Gateway -> Gateway: Store user context:\n- userId: 123\n- roles: [USER]\n- Add to request headers
+            
+            note right of Gateway
+            User authenticated successfully
+            User context added to request
+            end note
+        end
+    end
+end
+
+== Step 3: Rate Limiting Check ==
+
+Gateway -> RateLimiter: checkRateLimit(\n  userId: 123,\n  endpoint: /api/resumes/user/*\n)
+activate RateLimiter
+
+RateLimiter -> Redis: GET rate:limit:user:123:resumes
+activate Redis
+Redis --> RateLimiter: {\n  count: 45,\n  window: 60s,\n  resetAt: 1730283060\n}
+deactivate Redis
+
+RateLimiter -> RateLimiter: **Rate limit check:**\n\nConfiguration:\n- Limit: 50 requests per minute\n- Current: 45 requests\n- Window: Rolling 60 seconds\n\n✓ Request allowed (45 < 50)
+
+alt Rate limit exceeded
+    RateLimiter --> Gateway: 429 Too Many Requests\n{\n  error: "RATE_LIMIT_EXCEEDED",\n  retryAfter: 15,\n  limit: 50,\n  remaining: 0\n}
+    deactivate RateLimiter
+    Gateway --> Client: 429 Too Many Requests\nHeaders:\n  X-RateLimit-Limit: 50\n  X-RateLimit-Remaining: 0\n  X-RateLimit-Reset: 1730283060\n  Retry-After: 15
+    deactivate Gateway
+else Within rate limit
+    
+    RateLimiter -> Redis: INCR rate:limit:user:123:resumes\nEXPIRE 60
+    activate Redis
+    Redis --> RateLimiter: New count: 46
+    deactivate Redis
+    
+    RateLimiter --> Gateway: Rate limit OK\n{\n  remaining: 4,\n  resetAt: 1730283060\n}
+    deactivate RateLimiter
+    
+    Gateway -> Gateway: Add rate limit headers\nto response
+    
+    note right of Gateway
+    Rate limit passed
+    Remaining: 4 requests in current window
+    end note
+end
+
+== Step 4: Service Discovery ==
+
+Gateway -> ServiceDiscovery: getServiceInstance("resume-service")
+activate ServiceDiscovery
+
+ServiceDiscovery -> ServiceDiscovery: Query Eureka registry:\n- Service: resume-service\n- Available instances: 3\n- Load balancing: Round-robin
+
+ServiceDiscovery --> Gateway: {\n  host: "resume-service-1",\n  port: 8082,\n  healthStatus: "UP",\n  url: "http://resume-service-1:8082"\n}
+deactivate ServiceDiscovery
+
+note right of ServiceDiscovery
+Service Discovery returns healthy instance
+Gateway uses this for routing
+end note
+
+== Step 5: Circuit Breaker Check ==
+
+Gateway -> CircuitBreaker: allowRequest("resume-service")
+activate CircuitBreaker
+
+CircuitBreaker -> Redis: GET circuit:breaker:resume-service
+activate Redis
+Redis --> CircuitBreaker: {\n  state: "CLOSED",\n  failureCount: 2,\n  successCount: 98,\n  lastFailure: null\n}
+deactivate Redis
+
+CircuitBreaker -> CircuitBreaker: **Circuit breaker evaluation:**\n\nState: CLOSED ✓\nConfiguration:\n- Failure threshold: 50% (5 out of 10)\n- Wait duration: 30s\n- Success threshold: 3 consecutive\n\nCurrent metrics:\n- Recent failures: 2/10 (20%)\n- Circuit: CLOSED (healthy)\n\n✓ Request allowed to proceed
+
+alt Circuit breaker OPEN
+    CircuitBreaker --> Gateway: Circuit OPEN\n{\n  error: "SERVICE_UNAVAILABLE",\n  state: "OPEN",\n  retryAfter: 30\n}
+    deactivate CircuitBreaker
+    Gateway -> Redis: GET cache:resume:user:123
+    activate Redis
+    Redis --> Gateway: Cached resume data (if available)
+    deactivate Redis
+    
+    Gateway --> Client: 503 Service Unavailable\n(or cached response if available)
+    
+    deactivate Gateway
+else Circuit breaker CLOSED
+    
+    CircuitBreaker --> Gateway: Circuit CLOSED - Proceed
+    deactivate CircuitBreaker
+    
+    note right of CircuitBreaker
+    Circuit breaker allows request
+    Service is healthy
+    end note
+end
+
+== Step 6: Forward Request to Target Service ==
+
+Gateway -> TargetService: GET /resumes/user/123\nHeaders:\n  X-User-Id: 123\n  X-User-Email: john.doe@example.com\n  X-User-Roles: USER\n  X-Request-ID: req_abc123\n  X-Forwarded-For: 192.168.1.100
+activate TargetService
+
+note right of Gateway
+Gateway forwards request with:
+✓ User context in headers
+✓ Request tracing ID
+✓ Original client IP
+end note
+
+TargetService -> TargetService: Process request:\n- Validate userId matches token\n- Fetch resume from database\n- Build response
+
+TargetService --> Gateway: 200 OK\n{\n  resumeId: 456,\n  userId: 123,\n  fileName: "john_doe_resume.pdf",\n  parseStatus: "COMPLETED",\n  skills: [...],\n  experience: [...]\n}\nHeaders:\n  X-Response-Time: 145ms
+deactivate TargetService
+
+== Step 7: Circuit Breaker - Record Success ==
+
+Gateway -> CircuitBreaker: recordSuccess("resume-service")
+activate CircuitBreaker
+
+CircuitBreaker -> Redis: INCR circuit:success:resume-service\nEXPIRE 60
+activate Redis
+Redis --> CircuitBreaker: Success recorded
+deactivate Redis
+
+CircuitBreaker -> CircuitBreaker: Update metrics:\n- Success count: 99\n- Failure rate: 1.98%\n- State remains: CLOSED
+
+CircuitBreaker --> Gateway: Success recorded
+deactivate CircuitBreaker
+
+== Step 8: Cache Response (Optional) ==
+
+Gateway -> Redis: SETEX cache:resume:user:123 300 {...}
+activate Redis
+note right of Redis
+Cache response for 5 minutes
+For faster subsequent requests
+end note
+Redis --> Gateway: Cached
+deactivate Redis
+
+== Step 9: Record Metrics ==
+
+Gateway -> Monitoring: recordMetrics({\n  endpoint: "/api/resumes/user/123",\n  method: "GET",\n  status: 200,\n  responseTime: 152ms,\n  userId: 123,\n  service: "resume-service"\n})
+activate Monitoring
+Monitoring -> Monitoring: Update Prometheus metrics:\n- http_requests_total\n- http_request_duration_seconds\n- circuit_breaker_state\n- rate_limit_remaining
+Monitoring --> Gateway: Metrics recorded
+deactivate Monitoring
+
+== Step 10: Return Response to Client ==
+
+Gateway --> Client: 200 OK\n{\n  resumeId: 456,\n  userId: 123,\n  fileName: "john_doe_resume.pdf",\n  parseStatus: "COMPLETED",\n  skills: [...],\n  experience: [...]\n}\nHeaders:\n  X-Request-ID: req_abc123\n  X-RateLimit-Limit: 50\n  X-RateLimit-Remaining: 4\n  X-RateLimit-Reset: 1730283060\n  X-Response-Time: 152ms
+deactivate Gateway
+
+note over Client
+Request successful!
+✓ Authenticated via JWT
+✓ Rate limit: 4 remaining
+✓ Response time: 152ms
+✓ Service healthy
+end note
+
+@enduml
