@@ -1,0 +1,58 @@
+@startuml UserService_Integration
+
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.config" <<Rectangle>> {
+    
+    class SecurityConfig <<Configuration>> CONFIG_COLOR {
+        - jwtAuthenticationFilter: JwtAuthenticationFilter
+        --
+        + passwordEncoder(): PasswordEncoder
+        + authenticationManager(): AuthenticationManager
+        + securityFilterChain(http: HttpSecurity): SecurityFilterChain
+        + corsConfigurationSource(): CorsConfigurationSource
+    }
+    
+    class JwtAuthenticationFilter <<Filter>> CONFIG_COLOR {
+        - jwtUtil: JwtUtil
+        - userService: UserService
+        --
+        + doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain): void
+        - extractTokenFromRequest(request: HttpServletRequest): String
+        - validateAndSetAuthentication(token: String): void
+    }
+    
+    class DatabaseConfig <<Configuration>> CONFIG_COLOR {
+        + dataSource(): DataSource
+        + entityManagerFactory(): LocalContainerEntityManagerFactoryBean
+        + transactionManager(): PlatformTransactionManager
+    }
+    
+    class SwaggerConfig <<Configuration>> CONFIG_COLOR {
+        + api(): Docket
+        + apiInfo(): ApiInfo
+    }
+    
+    class ScheduledTasksConfig <<Configuration>> CONFIG_COLOR {
+        - tokenService: TokenService
+        --
+        + cleanupExpiredTokens(): void
+    }
+}
+
+SecurityConfig --> JwtAuthenticationFilter : configures
+JwtAuthenticationFilter --> JwtUtil : uses
+ScheduledTasksConfig --> TokenService : uses
+
+note right of JwtUtil
+  Utility for JWT token
+  generation and validation
+end note
+
+@enduml

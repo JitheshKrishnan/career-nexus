@@ -1,0 +1,63 @@
+@startuml UserService_Repositories
+
+!define REPOSITORY_COLOR #FFF9C4
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.repository" <<Rectangle>> {
+    
+    interface UserRepository <<Repository>> REPOSITORY_COLOR {
+        + findByEmail(email: String): Optional<User>
+        + findByIdAndAccountStatus(id: Long, status: AccountStatus): Optional<User>
+        + existsByEmail(email: String): boolean
+        + findAllByAccountStatus(status: AccountStatus): List<User>
+        + findByEmailVerified(verified: boolean): List<User>
+        + countByAccountStatus(status: AccountStatus): long
+    }
+    
+    interface EmailVerificationTokenRepository <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<EmailVerificationToken>
+        + findByUserId(userId: Long): List<EmailVerificationToken>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + existsByUserIdAndVerifiedAtIsNull(userId: Long): boolean
+    }
+    
+    interface PasswordResetTokenRepository <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<PasswordResetToken>
+        + findByUserId(userId: Long): List<PasswordResetToken>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface RefreshTokenRepository <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<RefreshToken>
+        + findByUserId(userId: Long): List<RefreshToken>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + revokeAllByUserId(userId: Long): void
+        + findByUserIdAndRevokedFalse(userId: Long): List<RefreshToken>
+    }
+    
+    interface JwtBlacklistRepository <<Repository>> REPOSITORY_COLOR {
+        + existsByTokenHash(tokenHash: String): boolean
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + saveBlacklistedToken(tokenHash: String, userId: Long, expiresAt: LocalDateTime): void
+    }
+    
+    interface UserPreferencesRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): Optional<UserPreferences>
+        + existsByUserId(userId: Long): boolean
+    }
+}
+
+UserRepository --|> JpaRepository
+EmailVerificationTokenRepository --|> JpaRepository
+PasswordResetTokenRepository --|> JpaRepository
+RefreshTokenRepository --|> JpaRepository
+JwtBlacklistRepository --|> JpaRepository
+UserPreferencesRepository --|> JpaRepository
+
+@enduml

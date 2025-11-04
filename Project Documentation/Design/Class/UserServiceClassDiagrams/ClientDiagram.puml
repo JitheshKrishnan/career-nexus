@@ -1,0 +1,28 @@
+@startuml UserService_Integration
+
+!define CLIENT_COLOR #FFCDD2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.client" <<Rectangle>> {
+    
+    interface NotificationServiceClient <<FeignClient>> CLIENT_COLOR {
+        + sendEmail(request: EmailRequest): void
+        + sendNotification(request: NotificationRequest): void
+    }
+    
+    class EmailRequest <<DTO>> CLIENT_COLOR {
+        - to: String
+        - subject: String
+        - body: String
+        - template: String
+        --
+        + getters/setters()
+    }
+}
+
+@enduml

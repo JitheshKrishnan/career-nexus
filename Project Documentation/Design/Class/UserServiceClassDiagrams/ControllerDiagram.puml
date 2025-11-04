@@ -1,0 +1,47 @@
+@startuml UserService_Controllers
+
+!define CONTROLLER_COLOR #FFE0B2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.controller" <<Rectangle>> {
+    
+    class UserController <<RestController>> CONTROLLER_COLOR {
+        - userService: UserService
+        --
+        + registerUser(request: UserRegistrationRequest): ResponseEntity<UserRegistrationResponse>
+        + verifyEmail(token: String): ResponseEntity<EmailVerificationResponse>
+        + resendVerificationEmail(email: String): ResponseEntity<Void>
+        + getUserProfile(userId: Long): ResponseEntity<UserDTO>
+        + updateUserProfile(userId: Long, request: UserUpdateRequest): ResponseEntity<UserDTO>
+        + deleteUser(userId: Long): ResponseEntity<Void>
+        + getAllUsers(): ResponseEntity<List<UserDTO>>
+    }
+    
+    class AuthController <<RestController>> CONTROLLER_COLOR {
+        - authService: AuthService
+        --
+        + login(request: LoginRequest): ResponseEntity<LoginResponse>
+        + logout(userId: Long, token: String): ResponseEntity<Void>
+        + refreshToken(request: TokenRefreshRequest): ResponseEntity<TokenRefreshResponse>
+        + validateToken(token: String): ResponseEntity<Boolean>
+    }
+    
+    class PasswordResetController <<RestController>> CONTROLLER_COLOR {
+        - passwordResetService: PasswordResetService
+        --
+        + requestPasswordReset(request: PasswordResetRequest): ResponseEntity<Void>
+        + resetPassword(request: PasswordResetConfirmRequest): ResponseEntity<Void>
+        + validateResetToken(token: String): ResponseEntity<Boolean>
+    }
+}
+
+UserController --> UserService : uses
+AuthController --> AuthService : uses
+PasswordResetController --> PasswordResetService : uses
+
+@enduml

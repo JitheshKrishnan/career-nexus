@@ -1,0 +1,66 @@
+@startuml UserService_Integration
+
+!define UTIL_COLOR #C8E6C9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.util" <<Rectangle>> {
+    
+    class JwtUtil <<Utility>> UTIL_COLOR {
+        - secretKey: String
+        - accessTokenExpiration: long
+        - refreshTokenExpiration: long
+        --
+        + generateAccessToken(user: User): String
+        + generateRefreshToken(user: User): String
+        + validateToken(token: String): boolean
+        + getUserIdFromToken(token: String): Long
+        + getEmailFromToken(token: String): String
+        + isTokenExpired(token: String): boolean
+        + getExpirationDateFromToken(token: String): Date
+        - extractClaim(token: String, claimsResolver: Function): T
+        - extractAllClaims(token: String): Claims
+    }
+    
+    class TokenGenerator <<Utility>> UTIL_COLOR {
+        + generateSecureToken(): String
+        + generateSecureToken(length: int): String
+        + hashToken(token: String): String
+    }
+    
+    class PasswordValidator <<Utility>> UTIL_COLOR {
+        + validatePassword(password: String): boolean
+        + hasMinimumLength(password: String): boolean
+        + hasUpperCase(password: String): boolean
+        + hasLowerCase(password: String): boolean
+        + hasDigit(password: String): boolean
+        + hasSpecialChar(password: String): boolean
+    }
+    
+    class EmailValidator <<Utility>> UTIL_COLOR {
+        + isValidEmail(email: String): boolean
+        + isDisposableEmail(email: String): boolean
+    }
+    
+    class UserMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(user: User): UserDTO
+        + toEntity(dto: UserDTO): User
+        + toRegistrationResponse(user: User): UserRegistrationResponse
+        + updateEntityFromDTO(user: User, dto: UserUpdateRequest): void
+    }
+}
+
+SecurityConfig --> JwtAuthenticationFilter : configures
+JwtAuthenticationFilter --> JwtUtil : uses
+ScheduledTasksConfig --> TokenService : uses
+
+note right of JwtUtil
+  Utility for JWT token
+  generation and validation
+end note
+
+@enduml

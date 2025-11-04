@@ -1,6 +1,5 @@
 Table: resumes
 
---! Changed --
 CREATE TABLE resumes (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
@@ -10,9 +9,13 @@ CREATE TABLE resumes (
     file_type VARCHAR(50),
 
     -- Generic storage fields
-    storage_provider ENUM('S3', 'CLOUDINARY', 'LOCAL', 'OTHER') DEFAULT 'S3',
+    storage_provider ENUM('S3', 'CLOUDINARY', 'LOCAL', 'AZURE_BLOB', "GCS") DEFAULT 'CLOUDINARY',
     storage_identifier VARCHAR(500),  -- e.g., s3_key or cloudinary public_id
     storage_metadata JSON,            -- optional, for flexible info (like folder, version, etc.)
+
+    -- Optional: Add backup storage for redundancy
+    backup_storage_provider ENUM('S3', 'CLOUDINARY', 'LOCAL', 'AZURE_BLOB', 'GCS') NULL,
+    backup_storage_identifier VARCHAR(500) NULL,
 
     parse_status ENUM('UPLOADED', 'PARSING', 'COMPLETED', 'FAILED') DEFAULT 'UPLOADED',
     parse_error_message TEXT,
@@ -24,6 +27,7 @@ CREATE TABLE resumes (
 
     INDEX idx_user_id (user_id),
     INDEX idx_parse_status (parse_status),
+    INDEX idx_storage_provider (storage_provider),  -- For querying by provider
     INDEX idx_uploaded_at (uploaded_at)
 );
 
@@ -102,7 +106,6 @@ CREATE TABLE resume_education (
     INDEX idx_resume_id (resume_id)
 );
 
---! Changed --
 Table: resume_certifications
 
 CREATE TABLE resume_certifications (
@@ -112,7 +115,7 @@ CREATE TABLE resume_certifications (
     issuing_organization VARCHAR(255),
     issue_date DATE,
     expiry_date DATE,
-    source ENUM('RESUME', 'PROFILE') DEFAULT 'RESUME', --!Confirm if this is needed and how to optimize
+    source ENUM('RESUME_PARSED', 'USER_MANUAL', 'PROFILE_IMPORT', 'LEARNING_PATH') DEFAULT 'RESUME_PARSED',
     credential_id VARCHAR(255),
     credential_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -139,7 +142,6 @@ CREATE TABLE resume_projects (
     INDEX idx_resume_id (resume_id)
 );
 
---? Should we have a benchmark for comparison for the columns with "has_" ?
 Table: resume_analysis (Quality & Insights)
 
 CREATE TABLE resume_analysis (
@@ -153,8 +155,14 @@ CREATE TABLE resume_analysis (
     has_experience BOOLEAN DEFAULT FALSE,
     has_education BOOLEAN DEFAULT FALSE,
     has_skills BOOLEAN DEFAULT FALSE,
+    has_projects BOOLEAN DEFAULT FALSE,
+    has_certifications BOOLEAN DEFAULT FALSE,
+    has_contact_info BOOLEAN DEFAULT FALSE,
     total_skills_count INT DEFAULT 0,
     total_experience_years DECIMAL(3,1) DEFAULT 0,
+    total_projects_count INT DEFAULT 0,
+    total_certifications_count INT DEFAULT 0,
+    word_count INT DEFAULT 0,
     suggestions TEXT, -- JSON array of improvement suggestions
     analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     

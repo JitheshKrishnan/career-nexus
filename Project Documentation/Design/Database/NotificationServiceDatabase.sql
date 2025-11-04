@@ -3,7 +3,7 @@ Table: notifications
 CREATE TABLE notifications (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
-    type ENUM('JOB_MATCH_ALERT', 'PHASE_COMPLETED', 'SKILL_ADDED', 'RESUME_PARSED', 'PASSWORD_RESET', 'COURSE_REMINDER', 'SYSTEM') NOT NULL,
+    type ENUM('PHASE_COMPLETED', 'SKILL_ADDED', 'RESUME_PARSED', 'PASSWORD_RESET', 'COURSE_REMINDER', 'SYSTEM') NOT NULL,
     title VARCHAR(500) NOT NULL,
     message TEXT NOT NULL,
     data JSON, -- Additional structured data
@@ -56,14 +56,12 @@ CREATE TABLE user_notification_preferences (
     sms_enabled BOOLEAN DEFAULT FALSE,
     
     -- Notification type preferences
-    job_alerts_enabled BOOLEAN DEFAULT TRUE,
     learning_reminders_enabled BOOLEAN DEFAULT TRUE,
     phase_completion_alerts BOOLEAN DEFAULT TRUE,
     system_notifications_enabled BOOLEAN DEFAULT TRUE,
     marketing_emails_enabled BOOLEAN DEFAULT FALSE,
     
     -- Frequency settings
-    job_alert_frequency ENUM('IMMEDIATE', 'DAILY', 'WEEKLY') DEFAULT 'IMMEDIATE',
     learning_reminder_time TIME DEFAULT '09:00:00',
     
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -72,7 +70,7 @@ CREATE TABLE user_notification_preferences (
 );
 
 Table: user_devices (For push notifications)
-
+--? implement this as a last option
 CREATE TABLE user_devices (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,

@@ -1,0 +1,116 @@
+@startuml UserService_DTOs
+
+!define DTO_COLOR #E1BEE7
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.dto" <<Rectangle>> {
+    
+    class UserRegistrationRequest <<DTO>> DTO_COLOR {
+        - email: String
+        - password: String
+        - fullName: String
+        - phoneNumber: String
+        - preferredJobTitle: String
+        - yearsOfExperience: Integer
+        --
+        + validate(): void
+    }
+    
+    class UserRegistrationResponse <<DTO>> DTO_COLOR {
+        - userId: Long
+        - email: String
+        - fullName: String
+        - message: String
+        - verificationEmailSent: boolean
+        --
+        + getters/setters()
+    }
+    
+    class LoginRequest <<DTO>> DTO_COLOR {
+        - email: String
+        - password: String
+        --
+        + validate(): void
+    }
+    
+    class LoginResponse <<DTO>> DTO_COLOR {
+        - accessToken: String
+        - refreshToken: String
+        - tokenType: String
+        - expiresIn: Long
+        - user: UserDTO
+        --
+        + getters/setters()
+    }
+    
+    class UserDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - email: String
+        - fullName: String
+        - phoneNumber: String
+        - profilePictureUrl: String
+        - preferredJobTitle: String
+        - preferredLocation: String
+        - yearsOfExperience: Integer
+        - accountStatus: String
+        - emailVerified: Boolean
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class PasswordResetRequest <<DTO>> DTO_COLOR {
+        - email: String
+        --
+        + validate(): void
+    }
+    
+    class PasswordResetConfirmRequest <<DTO>> DTO_COLOR {
+        - token: String
+        - newPassword: String
+        - confirmPassword: String
+        --
+        + validate(): void
+        + passwordsMatch(): boolean
+    }
+    
+    class TokenRefreshRequest <<DTO>> DTO_COLOR {
+        - refreshToken: String
+        --
+        + validate(): void
+    }
+    
+    class TokenRefreshResponse <<DTO>> DTO_COLOR {
+        - accessToken: String
+        - refreshToken: String
+        - expiresIn: Long
+        --
+        + getters/setters()
+    }
+    
+    class UserUpdateRequest <<DTO>> DTO_COLOR {
+        - fullName: String
+        - phoneNumber: String
+        - profilePictureUrl: String
+        - preferredJobTitle: String
+        - preferredLocation: String
+        - yearsOfExperience: Integer
+        --
+        + validate(): void
+    }
+    
+    class EmailVerificationResponse <<DTO>> DTO_COLOR {
+        - success: boolean
+        - message: String
+        - userId: Long
+        --
+        + getters/setters()
+    }
+}
+
+@enduml

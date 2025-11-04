@@ -53,8 +53,6 @@ CREATE TABLE job_skills (
 
 Table: job_matches
 
---! Removed notification, notification_sent because the job search and job match is done while the user is using the application
---! Removed applied and applied_at, because the user cannot apply in my platform but rather redirect to the platform from which the job was fetched from
 CREATE TABLE job_matches (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
@@ -80,7 +78,6 @@ CREATE TABLE job_matches (
 
 Table: user_job_searches
 
---! Make sure if we really need all the columns including filters?
 CREATE TABLE user_job_searches (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
@@ -89,12 +86,15 @@ CREATE TABLE user_job_searches (
     job_type VARCHAR(50),
     experience_level VARCHAR(50),
     salary_min DECIMAL(10,2),
-    filters TEXT, -- JSON object
+    filters JSON, -- JSON object
     results_count INT,
     searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     INDEX idx_user_id (user_id),
-    INDEX idx_searched_at (searched_at)
+    INDEX idx_searched_at (searched_at),
+    INDEX idx_location (location),
+    INDEX idx_job_type (job_type),
+    INDEX idx_salary_range (salary_min, salary_max)
 );
 
 Table: saved_jobs
@@ -111,7 +111,3 @@ CREATE TABLE saved_jobs (
     INDEX idx_job_id (job_id),
     UNIQUE KEY unique_user_saved_job (user_id, job_id)
 );
-
-Table: job_applications
-
---! No need of this as we are not making any application through our application

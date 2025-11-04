@@ -1,0 +1,64 @@
+@startuml UserService_Integration
+
+!define EXCEPTION_COLOR #FFCDD2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.exception" <<Rectangle>> {
+    
+    class UserNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + UserNotFoundException(message: String)
+        + UserNotFoundException(userId: Long)
+    }
+    
+    class UserAlreadyExistsException <<Exception>> EXCEPTION_COLOR {
+        + UserAlreadyExistsException(email: String)
+    }
+    
+    class InvalidCredentialsException <<Exception>> EXCEPTION_COLOR {
+        + InvalidCredentialsException(message: String)
+    }
+    
+    class TokenExpiredException <<Exception>> EXCEPTION_COLOR {
+        + TokenExpiredException(message: String)
+    }
+    
+    class InvalidTokenException <<Exception>> EXCEPTION_COLOR {
+        + InvalidTokenException(message: String)
+    }
+    
+    class EmailNotVerifiedException <<Exception>> EXCEPTION_COLOR {
+        + EmailNotVerifiedException(email: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleUserNotFoundException(ex: UserNotFoundException): ResponseEntity<ErrorResponse>
+        + handleUserAlreadyExistsException(ex: UserAlreadyExistsException): ResponseEntity<ErrorResponse>
+        + handleInvalidCredentialsException(ex: InvalidCredentialsException): ResponseEntity<ErrorResponse>
+        + handleTokenExpiredException(ex: TokenExpiredException): ResponseEntity<ErrorResponse>
+        + handleValidationException(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse>
+        + handleGenericException(ex: Exception): ResponseEntity<ErrorResponse>
+    }
+    
+    class ErrorResponse <<DTO>> EXCEPTION_COLOR {
+        - timestamp: LocalDateTime
+        - status: int
+        - error: String
+        - message: String
+        - path: String
+        --
+        + getters/setters()
+    }
+}
+
+GlobalExceptionHandler ..> ErrorResponse : creates
+GlobalExceptionHandler ..> UserNotFoundException : handles
+GlobalExceptionHandler ..> UserAlreadyExistsException : handles
+GlobalExceptionHandler ..> InvalidCredentialsException : handles
+GlobalExceptionHandler ..> TokenExpiredException : handles
+
+@enduml

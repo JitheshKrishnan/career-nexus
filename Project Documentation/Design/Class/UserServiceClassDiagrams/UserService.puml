@@ -1,0 +1,658 @@
+@startuml User Service Class Diagram
+!define ENTITY_COLOR #E1F5FE
+!define REPOSITORY_COLOR #FFF9C4
+!define SERVICE_COLOR #F0F4C3
+!define CONTROLLER_COLOR #FFE0B2
+!define DTO_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+' ============================================
+' PACKAGE: MODEL (ENTITIES)
+' ============================================
+package "com.careernexus.userservice.model" <<Rectangle>> {
+    
+    class User <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - email: String
+        - passwordHash: String
+        - fullName: String
+        - phoneNumber: String
+        - profilePictureUrl: String
+        - preferredJobTitle: String
+        - preferredLocation: String
+        - yearsOfExperience: Integer
+        - accountStatus: AccountStatus
+        - emailVerified: Boolean
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        - lastLoginAt: LocalDateTime
+        --
+        + getters/setters()
+        + isActive(): boolean
+        + markEmailAsVerified(): void
+        + updateLastLogin(): void
+    }
+    
+    class EmailVerificationToken <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - verifiedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + markAsVerified(): void
+    }
+    
+    class PasswordResetToken <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - usedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isUsed(): boolean
+        + markAsUsed(): void
+    }
+    
+    class RefreshToken <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - revoked: Boolean
+        - revokedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isRevoked(): boolean
+        + revoke(): void
+    }
+    
+    class JwtBlacklist <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - tokenHash: String
+        - userId: Long
+        - expiresAt: LocalDateTime
+        - blacklistedAt: LocalDateTime
+        - reason: String
+        --
+        + getters/setters()
+    }
+    
+    class UserPreferences <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - theme: String
+        - language: String
+        - timezone: String
+        --
+        + getters/setters()
+        + getDefaultPreferences(): UserPreferences
+    }
+    
+    enum AccountStatus {
+        PENDING_VERIFICATION
+        ACTIVE
+        SUSPENDED
+        DELETED
+    }
+}
+
+' ============================================
+' PACKAGE: REPOSITORY
+' ============================================
+package "com.careernexus.userservice.repository" <<Rectangle>> {
+    
+    interface UserRepository <<Repository>> REPOSITORY_COLOR {
+        + findByEmail(email: String): Optional<User>
+        + findByIdAndAccountStatus(id: Long, status: AccountStatus): Optional<User>
+        + existsByEmail(email: String): boolean
+        + findAllByAccountStatus(status: AccountStatus): List<User>
+        + findByEmailVerified(verified: boolean): List<User>
+        + countByAccountStatus(status: AccountStatus): long
+    }
+    
+    interface EmailVerificationTokenRepository <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<EmailVerificationToken>
+        + findByUserId(userId: Long): List<EmailVerificationToken>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + existsByUserIdAndVerifiedAtIsNull(userId: Long): boolean
+    }
+    
+    interface PasswordResetTokenRepository <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<PasswordResetToken>
+        + findByUserId(userId: Long): List<PasswordResetToken>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface RefreshTokenRepository <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<RefreshToken>
+        + findByUserId(userId: Long): List<RefreshToken>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + revokeAllByUserId(userId: Long): void
+        + findByUserIdAndRevokedFalse(userId: Long): List<RefreshToken>
+    }
+    
+    interface JwtBlacklistRepository <<Repository>> REPOSITORY_COLOR {
+        + existsByTokenHash(tokenHash: String): boolean
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + saveBlacklistedToken(tokenHash: String, userId: Long, expiresAt: LocalDateTime): void
+    }
+    
+    interface UserPreferencesRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): Optional<UserPreferences>
+        + existsByUserId(userId: Long): boolean
+    }
+}
+
+' ============================================
+' PACKAGE: DTO (Data Transfer Objects)
+' ============================================
+package "com.careernexus.userservice.dto" <<Rectangle>> {
+    
+    class UserRegistrationRequest <<DTO>> DTO_COLOR {
+        - email: String
+        - password: String
+        - fullName: String
+        - phoneNumber: String
+        - preferredJobTitle: String
+        - yearsOfExperience: Integer
+        --
+        + validate(): void
+    }
+    
+    class UserRegistrationResponse <<DTO>> DTO_COLOR {
+        - userId: Long
+        - email: String
+        - fullName: String
+        - message: String
+        - verificationEmailSent: boolean
+        --
+        + getters/setters()
+    }
+    
+    class LoginRequest <<DTO>> DTO_COLOR {
+        - email: String
+        - password: String
+        --
+        + validate(): void
+    }
+    
+    class LoginResponse <<DTO>> DTO_COLOR {
+        - accessToken: String
+        - refreshToken: String
+        - tokenType: String
+        - expiresIn: Long
+        - user: UserDTO
+        --
+        + getters/setters()
+    }
+    
+    class UserDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - email: String
+        - fullName: String
+        - phoneNumber: String
+        - profilePictureUrl: String
+        - preferredJobTitle: String
+        - preferredLocation: String
+        - yearsOfExperience: Integer
+        - accountStatus: String
+        - emailVerified: Boolean
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class PasswordResetRequest <<DTO>> DTO_COLOR {
+        - email: String
+        --
+        + validate(): void
+    }
+    
+    class PasswordResetConfirmRequest <<DTO>> DTO_COLOR {
+        - token: String
+        - newPassword: String
+        - confirmPassword: String
+        --
+        + validate(): void
+        + passwordsMatch(): boolean
+    }
+    
+    class TokenRefreshRequest <<DTO>> DTO_COLOR {
+        - refreshToken: String
+        --
+        + validate(): void
+    }
+    
+    class TokenRefreshResponse <<DTO>> DTO_COLOR {
+        - accessToken: String
+        - refreshToken: String
+        - expiresIn: Long
+        --
+        + getters/setters()
+    }
+    
+    class UserUpdateRequest <<DTO>> DTO_COLOR {
+        - fullName: String
+        - phoneNumber: String
+        - profilePictureUrl: String
+        - preferredJobTitle: String
+        - preferredLocation: String
+        - yearsOfExperience: Integer
+        --
+        + validate(): void
+    }
+    
+    class EmailVerificationResponse <<DTO>> DTO_COLOR {
+        - success: boolean
+        - message: String
+        - userId: Long
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' PACKAGE: SERVICE
+' ============================================
+package "com.careernexus.userservice.service" <<Rectangle>> {
+    
+    interface UserService <<Service>> SERVICE_COLOR {
+        + registerUser(request: UserRegistrationRequest): UserRegistrationResponse
+        + getUserById(userId: Long): UserDTO
+        + getUserByEmail(email: String): UserDTO
+        + updateUser(userId: Long, request: UserUpdateRequest): UserDTO
+        + deleteUser(userId: Long): void
+        + verifyEmail(token: String): EmailVerificationResponse
+        + resendVerificationEmail(email: String): void
+        + getAllUsers(): List<UserDTO>
+        + getUsersByStatus(status: AccountStatus): List<UserDTO>
+    }
+    
+    class UserServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userRepository: UserRepository
+        - emailVerificationTokenRepository: EmailVerificationTokenRepository
+        - userPreferencesRepository: UserPreferencesRepository
+        - passwordEncoder: PasswordEncoder
+        - emailService: EmailService
+        - tokenService: TokenService
+        --
+        + registerUser(request: UserRegistrationRequest): UserRegistrationResponse
+        + getUserById(userId: Long): UserDTO
+        + updateUser(userId: Long, request: UserUpdateRequest): UserDTO
+        + verifyEmail(token: String): EmailVerificationResponse
+        - createDefaultPreferences(userId: Long): void
+        - generateVerificationToken(userId: Long): String
+        - validateRegistrationRequest(request: UserRegistrationRequest): void
+    }
+    
+    interface AuthService <<Service>> SERVICE_COLOR {
+        + login(request: LoginRequest): LoginResponse
+        + logout(userId: Long, accessToken: String): void
+        + refreshToken(request: TokenRefreshRequest): TokenRefreshResponse
+        + validateToken(token: String): boolean
+        + getUserIdFromToken(token: String): Long
+    }
+    
+    class AuthServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userRepository: UserRepository
+        - refreshTokenRepository: RefreshTokenRepository
+        - jwtBlacklistRepository: JwtBlacklistRepository
+        - passwordEncoder: PasswordEncoder
+        - jwtUtil: JwtUtil
+        --
+        + login(request: LoginRequest): LoginResponse
+        + logout(userId: Long, accessToken: String): void
+        + refreshToken(request: TokenRefreshRequest): TokenRefreshResponse
+        + validateToken(token: String): boolean
+        - generateAccessToken(user: User): String
+        - generateRefreshToken(user: User): RefreshToken
+        - blacklistToken(token: String, userId: Long): void
+    }
+    
+    interface PasswordResetService <<Service>> SERVICE_COLOR {
+        + requestPasswordReset(request: PasswordResetRequest): void
+        + resetPassword(request: PasswordResetConfirmRequest): void
+        + validateResetToken(token: String): boolean
+    }
+    
+    class PasswordResetServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userRepository: UserRepository
+        - passwordResetTokenRepository: PasswordResetTokenRepository
+        - passwordEncoder: PasswordEncoder
+        - emailService: EmailService
+        --
+        + requestPasswordReset(request: PasswordResetRequest): void
+        + resetPassword(request: PasswordResetConfirmRequest): void
+        - generateResetToken(userId: Long): String
+        - sendResetEmail(email: String, token: String): void
+    }
+    
+    interface TokenService <<Service>> SERVICE_COLOR {
+        + generateEmailVerificationToken(userId: Long): String
+        + validateEmailVerificationToken(token: String): boolean
+        + generatePasswordResetToken(userId: Long): String
+        + validatePasswordResetToken(token: String): boolean
+        + cleanupExpiredTokens(): void
+    }
+    
+    class TokenServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - emailVerificationTokenRepository: EmailVerificationTokenRepository
+        - passwordResetTokenRepository: PasswordResetTokenRepository
+        --
+        + generateEmailVerificationToken(userId: Long): String
+        + validateEmailVerificationToken(token: String): boolean
+        + cleanupExpiredTokens(): void
+        - generateSecureToken(): String
+    }
+    
+    interface EmailService <<Service>> SERVICE_COLOR {
+        + sendVerificationEmail(email: String, token: String): void
+        + sendPasswordResetEmail(email: String, token: String): void
+        + sendWelcomeEmail(email: String, fullName: String): void
+    }
+    
+    class EmailServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - notificationServiceClient: NotificationServiceClient
+        - emailTemplateLoader: EmailTemplateLoader
+        --
+        + sendVerificationEmail(email: String, token: String): void
+        + sendPasswordResetEmail(email: String, token: String): void
+        - buildVerificationEmailContent(token: String): String
+    }
+}
+
+' ============================================
+' PACKAGE: CONTROLLER
+' ============================================
+package "com.careernexus.userservice.controller" <<Rectangle>> {
+    
+    class UserController <<RestController>> CONTROLLER_COLOR {
+        - userService: UserService
+        --
+        + registerUser(request: UserRegistrationRequest): ResponseEntity<UserRegistrationResponse>
+        + verifyEmail(token: String): ResponseEntity<EmailVerificationResponse>
+        + resendVerificationEmail(email: String): ResponseEntity<Void>
+        + getUserProfile(userId: Long): ResponseEntity<UserDTO>
+        + updateUserProfile(userId: Long, request: UserUpdateRequest): ResponseEntity<UserDTO>
+        + deleteUser(userId: Long): ResponseEntity<Void>
+        + getAllUsers(): ResponseEntity<List<UserDTO>>
+    }
+    
+    class AuthController <<RestController>> CONTROLLER_COLOR {
+        - authService: AuthService
+        --
+        + login(request: LoginRequest): ResponseEntity<LoginResponse>
+        + logout(userId: Long, token: String): ResponseEntity<Void>
+        + refreshToken(request: TokenRefreshRequest): ResponseEntity<TokenRefreshResponse>
+        + validateToken(token: String): ResponseEntity<Boolean>
+    }
+    
+    class PasswordResetController <<RestController>> CONTROLLER_COLOR {
+        - passwordResetService: PasswordResetService
+        --
+        + requestPasswordReset(request: PasswordResetRequest): ResponseEntity<Void>
+        + resetPassword(request: PasswordResetConfirmRequest): ResponseEntity<Void>
+        + validateResetToken(token: String): ResponseEntity<Boolean>
+    }
+}
+
+' ============================================
+' PACKAGE: EXCEPTION
+' ============================================
+package "com.careernexus.userservice.exception" <<Rectangle>> {
+    
+    class UserNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + UserNotFoundException(message: String)
+        + UserNotFoundException(userId: Long)
+    }
+    
+    class UserAlreadyExistsException <<Exception>> EXCEPTION_COLOR {
+        + UserAlreadyExistsException(email: String)
+    }
+    
+    class InvalidCredentialsException <<Exception>> EXCEPTION_COLOR {
+        + InvalidCredentialsException(message: String)
+    }
+    
+    class TokenExpiredException <<Exception>> EXCEPTION_COLOR {
+        + TokenExpiredException(message: String)
+    }
+    
+    class InvalidTokenException <<Exception>> EXCEPTION_COLOR {
+        + InvalidTokenException(message: String)
+    }
+    
+    class EmailNotVerifiedException <<Exception>> EXCEPTION_COLOR {
+        + EmailNotVerifiedException(email: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleUserNotFoundException(ex: UserNotFoundException): ResponseEntity<ErrorResponse>
+        + handleUserAlreadyExistsException(ex: UserAlreadyExistsException): ResponseEntity<ErrorResponse>
+        + handleInvalidCredentialsException(ex: InvalidCredentialsException): ResponseEntity<ErrorResponse>
+        + handleTokenExpiredException(ex: TokenExpiredException): ResponseEntity<ErrorResponse>
+        + handleValidationException(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse>
+        + handleGenericException(ex: Exception): ResponseEntity<ErrorResponse>
+    }
+    
+    class ErrorResponse <<DTO>> EXCEPTION_COLOR {
+        - timestamp: LocalDateTime
+        - status: int
+        - error: String
+        - message: String
+        - path: String
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' PACKAGE: UTIL
+' ============================================
+package "com.careernexus.userservice.util" <<Rectangle>> {
+    
+    class JwtUtil <<Utility>> UTIL_COLOR {
+        - secretKey: String
+        - accessTokenExpiration: long
+        - refreshTokenExpiration: long
+        --
+        + generateAccessToken(user: User): String
+        + generateRefreshToken(user: User): String
+        + validateToken(token: String): boolean
+        + getUserIdFromToken(token: String): Long
+        + getEmailFromToken(token: String): String
+        + isTokenExpired(token: String): boolean
+        + getExpirationDateFromToken(token: String): Date
+        - extractClaim(token: String, claimsResolver: Function): T
+        - extractAllClaims(token: String): Claims
+    }
+    
+    class TokenGenerator <<Utility>> UTIL_COLOR {
+        + generateSecureToken(): String
+        + generateSecureToken(length: int): String
+        + hashToken(token: String): String
+    }
+    
+    class PasswordValidator <<Utility>> UTIL_COLOR {
+        + validatePassword(password: String): boolean
+        + hasMinimumLength(password: String): boolean
+        + hasUpperCase(password: String): boolean
+        + hasLowerCase(password: String): boolean
+        + hasDigit(password: String): boolean
+        + hasSpecialChar(password: String): boolean
+    }
+    
+    class EmailValidator <<Utility>> UTIL_COLOR {
+        + isValidEmail(email: String): boolean
+        + isDisposableEmail(email: String): boolean
+    }
+    
+    class UserMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(user: User): UserDTO
+        + toEntity(dto: UserDTO): User
+        + toRegistrationResponse(user: User): UserRegistrationResponse
+        + updateEntityFromDTO(user: User, dto: UserUpdateRequest): void
+    }
+}
+
+' ============================================
+' PACKAGE: CONFIG
+' ============================================
+package "com.careernexus.userservice.config" <<Rectangle>> {
+    
+    class SecurityConfig <<Configuration>> CONFIG_COLOR {
+        - jwtAuthenticationFilter: JwtAuthenticationFilter
+        --
+        + passwordEncoder(): PasswordEncoder
+        + authenticationManager(): AuthenticationManager
+        + securityFilterChain(http: HttpSecurity): SecurityFilterChain
+        + corsConfigurationSource(): CorsConfigurationSource
+    }
+    
+    class JwtAuthenticationFilter <<Filter>> CONFIG_COLOR {
+        - jwtUtil: JwtUtil
+        - userService: UserService
+        --
+        + doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain): void
+        - extractTokenFromRequest(request: HttpServletRequest): String
+        - validateAndSetAuthentication(token: String): void
+    }
+    
+    class DatabaseConfig <<Configuration>> CONFIG_COLOR {
+        + dataSource(): DataSource
+        + entityManagerFactory(): LocalContainerEntityManagerFactoryBean
+        + transactionManager(): PlatformTransactionManager
+    }
+    
+    class SwaggerConfig <<Configuration>> CONFIG_COLOR {
+        + api(): Docket
+        + apiInfo(): ApiInfo
+    }
+    
+    class ScheduledTasksConfig <<Configuration>> CONFIG_COLOR {
+        - tokenService: TokenService
+        --
+        + cleanupExpiredTokens(): void
+    }
+}
+
+' ============================================
+' PACKAGE: CLIENT (Feign Clients)
+' ============================================
+package "com.careernexus.userservice.client" <<Rectangle>> {
+    
+    interface NotificationServiceClient <<FeignClient>> CONFIG_COLOR {
+        + sendEmail(request: EmailRequest): void
+        + sendNotification(request: NotificationRequest): void
+    }
+    
+    class EmailRequest <<DTO>> DTO_COLOR {
+        - to: String
+        - subject: String
+        - body: String
+        - template: String
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+' Repository extends JpaRepository
+UserRepository --|> JpaRepository
+EmailVerificationTokenRepository --|> JpaRepository
+PasswordResetTokenRepository --|> JpaRepository
+RefreshTokenRepository --|> JpaRepository
+JwtBlacklistRepository --|> JpaRepository
+UserPreferencesRepository --|> JpaRepository
+
+' Service implementations
+UserServiceImpl ..|> UserService
+AuthServiceImpl ..|> AuthService
+PasswordResetServiceImpl ..|> PasswordResetService
+TokenServiceImpl ..|> TokenService
+EmailServiceImpl ..|> EmailService
+
+' Service dependencies
+UserServiceImpl --> UserRepository : uses
+UserServiceImpl --> EmailVerificationTokenRepository : uses
+UserServiceImpl --> UserPreferencesRepository : uses
+UserServiceImpl --> EmailService : uses
+UserServiceImpl --> TokenService : uses
+UserServiceImpl --> UserMapper : uses
+
+AuthServiceImpl --> UserRepository : uses
+AuthServiceImpl --> RefreshTokenRepository : uses
+AuthServiceImpl --> JwtBlacklistRepository : uses
+AuthServiceImpl --> JwtUtil : uses
+
+PasswordResetServiceImpl --> UserRepository : uses
+PasswordResetServiceImpl --> PasswordResetTokenRepository : uses
+PasswordResetServiceImpl --> EmailService : uses
+
+TokenServiceImpl --> EmailVerificationTokenRepository : uses
+TokenServiceImpl --> PasswordResetTokenRepository : uses
+TokenServiceImpl --> TokenGenerator : uses
+
+EmailServiceImpl --> NotificationServiceClient : uses
+
+' Controller dependencies
+UserController --> UserService : uses
+AuthController --> AuthService : uses
+PasswordResetController --> PasswordResetService : uses
+
+' Entity relationships
+User "1" -- "0..*" EmailVerificationToken : has
+User "1" -- "0..*" PasswordResetToken : has
+User "1" -- "0..*" RefreshToken : has
+User "1" -- "1" UserPreferences : has
+User "1" -- "0..*" JwtBlacklist : has
+
+' Exception handling
+GlobalExceptionHandler ..> ErrorResponse : creates
+GlobalExceptionHandler ..> UserNotFoundException : handles
+GlobalExceptionHandler ..> UserAlreadyExistsException : handles
+GlobalExceptionHandler ..> InvalidCredentialsException : handles
+GlobalExceptionHandler ..> TokenExpiredException : handles
+
+' Config relationships
+SecurityConfig --> JwtAuthenticationFilter : configures
+JwtAuthenticationFilter --> JwtUtil : uses
+ScheduledTasksConfig --> TokenService : uses
+
+note right of User
+  Main entity representing
+  a user in the system
+end note
+
+note right of UserService
+  Main service interface for
+  user-related operations
+end note
+
+note right of JwtUtil
+  Utility for JWT token
+  generation and validation
+end note
+
+@enduml

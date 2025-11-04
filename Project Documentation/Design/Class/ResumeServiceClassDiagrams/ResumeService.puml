@@ -1,0 +1,715 @@
+@startuml Resume Service Class Diagram
+!define ENTITY_COLOR #E1F5FE
+!define REPOSITORY_COLOR #FFF9C4
+!define SERVICE_COLOR #F0F4C3
+!define CONTROLLER_COLOR #FFE0B2
+!define DTO_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+' ============================================
+' PACKAGE: MODEL (ENTITIES)
+' ============================================
+package "com.careernexus.resumeservice.model" <<Rectangle>> {
+    
+    class Resume <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - fileName: String
+        - fileUrl: String
+        - fileSizeKb: Integer
+        - fileType: String
+        - storageProvider: StorageProvider
+        - storageIdentifier: String
+        - storageMetadata: String
+        - parseStatus: ParseStatus
+        - parseErrorMessage: String
+        - qualityScore: Integer
+        - completenessScore: Integer
+        - uploadedAt: LocalDateTime
+        - parsedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isParsed(): boolean
+        + markAsParsing(): void
+        + markAsCompleted(): void
+        + markAsFailed(error: String): void
+    }
+    
+    class ResumePersonalInfo <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - fullName: String
+        - email: String
+        - phone: String
+        - location: String
+        - linkedinUrl: String
+        - githubUrl: String
+        - portfolioUrl: String
+        - summary: String
+        --
+        + getters/setters()
+        + hasContactInfo(): boolean
+    }
+    
+    class ResumeSkill <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - skillName: String
+        - skillCategory: SkillCategory
+        - proficiencyLevel: ProficiencyLevel
+        - yearsOfExperience: BigDecimal
+        - acquiredVia: SkillAcquisition
+        - certificateUrl: String
+        - addedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isFromLearningPath(): boolean
+    }
+    
+    class ResumeExperience <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - companyName: String
+        - jobTitle: String
+        - location: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - isCurrent: Boolean
+        - description: String
+        - technologiesUsed: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + calculateDuration(): Period
+        + isCurrentJob(): boolean
+    }
+    
+    class ResumeEducation <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - institutionName: String
+        - degree: String
+        - fieldOfStudy: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - grade: String
+        - description: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class ResumeCertification <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - certificationName: String
+        - issuingOrganization: String
+        - issueDate: LocalDate
+        - expiryDate: LocalDate
+        - source: CertificationSource
+        - credentialId: String
+        - credentialUrl: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isFromResume(): boolean
+    }
+    
+    class ResumeProject <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - projectName: String
+        - description: String
+        - technologiesUsed: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - projectUrl: String
+        - githubUrl: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + hasTechnologies(): boolean
+    }
+    
+    class ResumeAnalysis <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - overallScore: Integer
+        - completenessScore: Integer
+        - keywordOptimizationScore: Integer
+        - formattingScore: Integer
+        - hasSummary: Boolean
+        - hasExperience: Boolean
+        - hasEducation: Boolean
+        - hasSkills: Boolean
+        - hasProjects: Boolean
+        - hasCertifications: Boolean
+        - hasContactInfo: Boolean
+        - totalSkillsCount: Integer
+        - totalExperienceYears: BigDecimal
+        - totalProjectsCount: Integer
+        - totalCertificationsCount: Integer
+        - wordCount: Integer
+        - suggestions: String
+        - analyzedAt: LocalDateTime
+        --
+        + getters/setters()
+        + calculateOverallScore(): int
+        + needsImprovement(): boolean
+    }
+    
+    enum ParseStatus {
+        UPLOADED
+        PARSING
+        COMPLETED
+        FAILED
+    }
+    
+    enum StorageProvider {
+        S3
+        CLOUDINARY
+        LOCAL
+        AZURE_BLOB
+        GCS
+    }
+    
+    enum SkillCategory {
+        TECHNICAL
+        SOFT
+        LANGUAGE
+        TOOL
+        FRAMEWORK
+        OTHER
+    }
+    
+    enum ProficiencyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+        EXPERT
+    }
+    
+    enum SkillAcquisition {
+        RESUME
+        LEARNING_PATH
+        MANUAL
+    }
+    
+    enum CertificationSource {
+        RESUME_PARSED
+        USER_MANUAL
+        PROFILE_IMPORT
+        LEARNING_PATH
+    }
+}
+
+' ============================================
+' PACKAGE: REPOSITORY
+' ============================================
+package "com.careernexus.resumeservice.repository" <<Rectangle>> {
+    
+    interface ResumeRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<Resume>
+        + findByUserIdAndParseStatus(userId: Long, status: ParseStatus): List<Resume>
+        + findLatestByUserId(userId: Long): Optional<Resume>
+        + findByParseStatus(status: ParseStatus): List<Resume>
+        + countByUserId(userId: Long): long
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface ResumePersonalInfoRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): Optional<ResumePersonalInfo>
+        + existsByResumeId(resumeId: Long): boolean
+    }
+    
+    interface ResumeSkillRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeSkill>
+        + findByResumeIdAndSkillCategory(resumeId: Long, category: SkillCategory): List<ResumeSkill>
+        + findBySkillName(skillName: String): List<ResumeSkill>
+        + countByResumeId(resumeId: Long): long
+        + existsByResumeIdAndSkillName(resumeId: Long, skillName: String): boolean
+        + deleteByResumeId(resumeId: Long): void
+    }
+    
+    interface ResumeExperienceRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeExperience>
+        + findByResumeIdOrderByStartDateDesc(resumeId: Long): List<ResumeExperience>
+        + countByResumeId(resumeId: Long): long
+        + deleteByResumeId(resumeId: Long): void
+    }
+    
+    interface ResumeEducationRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeEducation>
+        + findByResumeIdOrderByEndDateDesc(resumeId: Long): List<ResumeEducation>
+        + countByResumeId(resumeId: Long): long
+    }
+    
+    interface ResumeCertificationRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeCertification>
+        + findByResumeIdAndSource(resumeId: Long, source: CertificationSource): List<ResumeCertification>
+        + findExpiredCertifications(resumeId: Long, currentDate: LocalDate): List<ResumeCertification>
+        + countByResumeId(resumeId: Long): long
+    }
+    
+    interface ResumeProjectRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeProject>
+        + countByResumeId(resumeId: Long): long
+    }
+    
+    interface ResumeAnalysisRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): Optional<ResumeAnalysis>
+        + existsByResumeId(resumeId: Long): boolean
+    }
+}
+
+' ============================================
+' PACKAGE: DTO
+' ============================================
+package "com.careernexus.resumeservice.dto" <<Rectangle>> {
+    
+    class ResumeUploadRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - file: MultipartFile
+        --
+        + validate(): void
+        + getFileExtension(): String
+    }
+    
+    class ResumeUploadResponse <<DTO>> DTO_COLOR {
+        - resumeId: Long
+        - fileName: String
+        - fileUrl: String
+        - parseStatus: String
+        - message: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - userId: Long
+        - fileName: String
+        - fileUrl: String
+        - parseStatus: String
+        - qualityScore: Integer
+        - completenessScore: Integer
+        - personalInfo: ResumePersonalInfoDTO
+        - skills: List<ResumeSkillDTO>
+        - experiences: List<ResumeExperienceDTO>
+        - educations: List<ResumeEducationDTO>
+        - certifications: List<ResumeCertificationDTO>
+        - projects: List<ResumeProjectDTO>
+        - analysis: ResumeAnalysisDTO
+        - uploadedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class ResumePersonalInfoDTO <<DTO>> DTO_COLOR {
+        - fullName: String
+        - email: String
+        - phone: String
+        - location: String
+        - linkedinUrl: String
+        - githubUrl: String
+        - portfolioUrl: String
+        - summary: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeSkillDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - category: String
+        - proficiencyLevel: String
+        - yearsOfExperience: BigDecimal
+        - acquiredVia: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeExperienceDTO <<DTO>> DTO_COLOR {
+        - companyName: String
+        - jobTitle: String
+        - location: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - isCurrent: Boolean
+        - description: String
+        - technologiesUsed: List<String>
+        --
+        + getters/setters()
+    }
+    
+    class ResumeEducationDTO <<DTO>> DTO_COLOR {
+        - institutionName: String
+        - degree: String
+        - fieldOfStudy: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - grade: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeCertificationDTO <<DTO>> DTO_COLOR {
+        - certificationName: String
+        - issuingOrganization: String
+        - issueDate: LocalDate
+        - expiryDate: LocalDate
+        - credentialUrl: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeProjectDTO <<DTO>> DTO_COLOR {
+        - projectName: String
+        - description: String
+        - technologiesUsed: List<String>
+        - projectUrl: String
+        - githubUrl: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeAnalysisDTO <<DTO>> DTO_COLOR {
+        - overallScore: Integer
+        - completenessScore: Integer
+        - keywordOptimizationScore: Integer
+        - hasSummary: Boolean
+        - hasExperience: Boolean
+        - hasSkills: Boolean
+        - totalSkillsCount: Integer
+        - suggestions: List<String>
+        --
+        + getters/setters()
+    }
+    
+    class AddSkillRequest <<DTO>> DTO_COLOR {
+        - skillName: String
+        - proficiencyLevel: String
+        - yearsOfExperience: BigDecimal
+        - certificateUrl: String
+        --
+        + validate(): void
+    }
+}
+
+' ============================================
+' PACKAGE: SERVICE
+' ============================================
+package "com.careernexus.resumeservice.service" <<Rectangle>> {
+    
+    interface ResumeService <<Service>> SERVICE_COLOR {
+        + uploadResume(request: ResumeUploadRequest): ResumeUploadResponse
+        + getResumeById(resumeId: Long): ResumeDTO
+        + getUserResumes(userId: Long): List<ResumeDTO>
+        + getLatestResume(userId: Long): ResumeDTO
+        + deleteResume(resumeId: Long): void
+        + getResumesByStatus(status: ParseStatus): List<ResumeDTO>
+    }
+    
+    class ResumeServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - resumeRepository: ResumeRepository
+        - storageService: StorageService
+        - resumeParserService: ResumeParserService
+        - resumeAnalysisService: ResumeAnalysisService
+        - resumeMapper: ResumeMapper
+        --
+        + uploadResume(request: ResumeUploadRequest): ResumeUploadResponse
+        + getResumeById(resumeId: Long): ResumeDTO
+        + getUserResumes(userId: Long): List<ResumeDTO>
+        - validateFile(file: MultipartFile): void
+        - saveResumeMetadata(userId: Long, fileUrl: String): Resume
+    }
+    
+    interface StorageService <<Service>> SERVICE_COLOR {
+        + uploadFile(file: MultipartFile, folder: String): StorageResult
+        + getFileUrl(identifier: String): String
+        + deleteFile(identifier: String): void
+    }
+    
+    class CloudinaryStorageService <<ServiceImpl>> SERVICE_COLOR {
+        - cloudinary: Cloudinary
+        --
+        + uploadFile(file: MultipartFile, folder: String): StorageResult
+        + getFileUrl(identifier: String): String
+        + deleteFile(identifier: String): void
+    }
+    
+    class S3StorageService <<ServiceImpl>> SERVICE_COLOR {
+        - s3Client: AmazonS3
+        - bucketName: String
+        --
+        + uploadFile(file: MultipartFile, folder: String): StorageResult
+        + getFileUrl(identifier: String): String
+        + deleteFile(identifier: String): void
+    }
+    
+    interface ResumeParserService <<Service>> SERVICE_COLOR {
+        + parseResume(resumeId: Long, fileUrl: String): void
+        + extractTextFromPdf(file: InputStream): String
+        + extractPersonalInfo(text: String): ResumePersonalInfo
+        + extractSkills(text: String): List<ResumeSkill>
+        + extractExperience(text: String): List<ResumeExperience>
+    }
+    
+    class ResumeParserServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - nlpServiceClient: NLPServiceClient
+        - tikaParser: TikaParser
+        - personalInfoRepo: ResumePersonalInfoRepository
+        - skillRepo: ResumeSkillRepository
+        - experienceRepo: ResumeExperienceRepository
+        --
+        + parseResume(resumeId: Long, fileUrl: String): void
+        - extractTextUsingTika(file: InputStream): String
+        - callNLPService(text: String): ParsedResumeData
+        - saveExtractedData(resumeId: Long, data: ParsedResumeData): void
+    }
+    
+    interface ResumeAnalysisService <<Service>> SERVICE_COLOR {
+        + analyzeResume(resumeId: Long): ResumeAnalysisDTO
+        + calculateQualityScore(resumeId: Long): int
+        + generateSuggestions(resumeId: Long): List<String>
+    }
+    
+    class ResumeAnalysisServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - resumeRepository: ResumeRepository
+        - analysisRepository: ResumeAnalysisRepository
+        - skillRepository: ResumeSkillRepository
+        - experienceRepository: ResumeExperienceRepository
+        --
+        + analyzeResume(resumeId: Long): ResumeAnalysisDTO
+        + calculateQualityScore(resumeId: Long): int
+        - calculateCompletenessScore(resumeId: Long): int
+        - calculateKeywordScore(resumeId: Long): int
+        - generateSuggestions(resumeId: Long): List<String>
+    }
+    
+    interface SkillService <<Service>> SERVICE_COLOR {
+        + addSkill(resumeId: Long, request: AddSkillRequest): ResumeSkillDTO
+        + getSkillsByResume(resumeId: Long): List<ResumeSkillDTO>
+        + updateSkill(skillId: Long, request: AddSkillRequest): ResumeSkillDTO
+        + deleteSkill(skillId: Long): void
+    }
+    
+    class SkillServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - skillRepository: ResumeSkillRepository
+        - resumeRepository: ResumeRepository
+        - skillMapper: SkillMapper
+        --
+        + addSkill(resumeId: Long, request: AddSkillRequest): ResumeSkillDTO
+        + getSkillsByResume(resumeId: Long): List<ResumeSkillDTO>
+        - validateSkillRequest(request: AddSkillRequest): void
+    }
+}
+
+' ============================================
+' PACKAGE: CONTROLLER
+' ============================================
+package "com.careernexus.resumeservice.controller" <<Rectangle>> {
+    
+    class ResumeController <<RestController>> CONTROLLER_COLOR {
+        - resumeService: ResumeService
+        --
+        + uploadResume(request: ResumeUploadRequest): ResponseEntity<ResumeUploadResponse>
+        + getResume(resumeId: Long): ResponseEntity<ResumeDTO>
+        + getUserResumes(userId: Long): ResponseEntity<List<ResumeDTO>>
+        + getLatestResume(userId: Long): ResponseEntity<ResumeDTO>
+        + deleteResume(resumeId: Long): ResponseEntity<Void>
+    }
+    
+    class ResumeAnalysisController <<RestController>> CONTROLLER_COLOR {
+        - analysisService: ResumeAnalysisService
+        --
+        + analyzeResume(resumeId: Long): ResponseEntity<ResumeAnalysisDTO>
+        + getQualityScore(resumeId: Long): ResponseEntity<Integer>
+    }
+    
+    class SkillController <<RestController>> CONTROLLER_COLOR {
+        - skillService: SkillService
+        --
+        + addSkill(resumeId: Long, request: AddSkillRequest): ResponseEntity<ResumeSkillDTO>
+        + getSkills(resumeId: Long): ResponseEntity<List<ResumeSkillDTO>>
+        + updateSkill(skillId: Long, request: AddSkillRequest): ResponseEntity<ResumeSkillDTO>
+        + deleteSkill(skillId: Long): ResponseEntity<Void>
+    }
+}
+
+' ============================================
+' PACKAGE: EXCEPTION
+' ============================================
+package "com.careernexus.resumeservice.exception" <<Rectangle>> {
+    
+    class ResumeNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + ResumeNotFoundException(resumeId: Long)
+    }
+    
+    class InvalidFileException <<Exception>> EXCEPTION_COLOR {
+        + InvalidFileException(message: String)
+    }
+    
+    class ResumeParseException <<Exception>> EXCEPTION_COLOR {
+        + ResumeParseException(message: String, cause: Throwable)
+    }
+    
+    class StorageException <<Exception>> EXCEPTION_COLOR {
+        + StorageException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleResumeNotFoundException(ex: ResumeNotFoundException): ResponseEntity<ErrorResponse>
+        + handleInvalidFileException(ex: InvalidFileException): ResponseEntity<ErrorResponse>
+        + handleResumeParseException(ex: ResumeParseException): ResponseEntity<ErrorResponse>
+        + handleStorageException(ex: StorageException): ResponseEntity<ErrorResponse>
+    }
+}
+
+' ============================================
+' PACKAGE: UTIL
+' ============================================
+package "com.careernexus.resumeservice.util" <<Rectangle>> {
+    
+    class ResumeMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(resume: Resume): ResumeDTO
+        + toEntity(dto: ResumeDTO): Resume
+        + toUploadResponse(resume: Resume): ResumeUploadResponse
+    }
+    
+    class SkillMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(skill: ResumeSkill): ResumeSkillDTO
+        + toEntity(dto: ResumeSkillDTO): ResumeSkill
+    }
+    
+    class FileValidator <<Utility>> UTIL_COLOR {
+        + validateFileType(file: MultipartFile): boolean
+        + validateFileSize(file: MultipartFile, maxSizeMB: int): boolean
+        + isAllowedExtension(filename: String): boolean
+    }
+    
+    class StorageResult <<ValueObject>> UTIL_COLOR {
+        - url: String
+        - identifier: String
+        - provider: StorageProvider
+        - metadata: Map<String, String>
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' PACKAGE: CONFIG
+' ============================================
+package "com.careernexus.resumeservice.config" <<Rectangle>> {
+    
+    class StorageConfig <<Configuration>> CONFIG_COLOR {
+        + storageService(): StorageService
+        + cloudinary(): Cloudinary
+        + amazonS3(): AmazonS3
+    }
+    
+    class TikaConfig <<Configuration>> CONFIG_COLOR {
+        + tikaParser(): TikaParser
+    }
+    
+    class AsyncConfig <<Configuration>> CONFIG_COLOR {
+        + taskExecutor(): Executor
+    }
+}
+
+' ============================================
+' PACKAGE: CLIENT
+' ============================================
+package "com.careernexus.resumeservice.client" <<Rectangle>> {
+    
+    interface NLPServiceClient <<FeignClient>> CONFIG_COLOR {
+        + parseResumeText(text: String): ParsedResumeData
+        + extractSkills(text: String): List<String>
+        + extractEntities(text: String): Map<String, List<String>>
+    }
+    
+    class ParsedResumeData <<DTO>> DTO_COLOR {
+        - personalInfo: Map<String, String>
+        - skills: List<String>
+        - experiences: List<Map<String, String>>
+        - educations: List<Map<String, String>>
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+' Entity relationships
+Resume "1" -- "0..1" ResumePersonalInfo
+Resume "1" -- "0..*" ResumeSkill
+Resume "1" -- "0..*" ResumeExperience
+Resume "1" -- "0..*" ResumeEducation
+Resume "1" -- "0..*" ResumeCertification
+Resume "1" -- "0..*" ResumeProject
+Resume "1" -- "0..1" ResumeAnalysis
+
+' Repository extends JpaRepository
+ResumeRepository --|> JpaRepository
+ResumePersonalInfoRepository --|> JpaRepository
+ResumeSkillRepository --|> JpaRepository
+ResumeExperienceRepository --|> JpaRepository
+ResumeEducationRepository --|> JpaRepository
+ResumeCertificationRepository --|> JpaRepository
+ResumeProjectRepository --|> JpaRepository
+ResumeAnalysisRepository --|> JpaRepository
+
+' Service implementations
+ResumeServiceImpl ..|> ResumeService
+CloudinaryStorageService ..|> StorageService
+S3StorageService ..|> StorageService
+ResumeParserServiceImpl ..|> ResumeParserService
+ResumeAnalysisServiceImpl ..|> ResumeAnalysisService
+SkillServiceImpl ..|> SkillService
+
+' Service dependencies
+ResumeServiceImpl --> ResumeRepository
+ResumeServiceImpl --> StorageService
+ResumeServiceImpl --> ResumeParserService
+ResumeServiceImpl --> ResumeAnalysisService
+
+ResumeParserServiceImpl --> NLPServiceClient
+ResumeParserServiceImpl --> ResumePersonalInfoRepository
+ResumeParserServiceImpl --> ResumeSkillRepository
+ResumeParserServiceImpl --> ResumeExperienceRepository
+
+ResumeAnalysisServiceImpl --> ResumeRepository
+ResumeAnalysisServiceImpl --> ResumeAnalysisRepository
+ResumeAnalysisServiceImpl --> ResumeSkillRepository
+
+SkillServiceImpl --> ResumeSkillRepository
+SkillServiceImpl --> ResumeRepository
+
+' Controller dependencies
+ResumeController --> ResumeService
+ResumeAnalysisController --> ResumeAnalysisService
+SkillController --> SkillService
+
+note right of Resume
+  Main entity with storage
+  provider abstraction
+end note
+
+note right of ResumeParserService
+  Uses Apache Tika + NLP Service
+  for text extraction and parsing
+end note
+
+@enduml

@@ -1,0 +1,117 @@
+@startuml UserService_Entities
+
+!define ENTITY_COLOR #E1F5FE
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.model" <<Rectangle>> {
+    
+    class User <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - email: String
+        - passwordHash: String
+        - fullName: String
+        - phoneNumber: String
+        - profilePictureUrl: String
+        - preferredJobTitle: String
+        - preferredLocation: String
+        - yearsOfExperience: Integer
+        - accountStatus: AccountStatus
+        - emailVerified: Boolean
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        - lastLoginAt: LocalDateTime
+        --
+        + getters/setters()
+        + isActive(): boolean
+        + markEmailAsVerified(): void
+        + updateLastLogin(): void
+    }
+    
+    class EmailVerificationToken <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - verifiedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + markAsVerified(): void
+    }
+    
+    class PasswordResetToken <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - usedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isUsed(): boolean
+        + markAsUsed(): void
+    }
+    
+    class RefreshToken <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - revoked: Boolean
+        - revokedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isRevoked(): boolean
+        + revoke(): void
+    }
+    
+    class JwtBlacklist <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - tokenHash: String
+        - userId: Long
+        - expiresAt: LocalDateTime
+        - blacklistedAt: LocalDateTime
+        - reason: String
+        --
+        + getters/setters()
+    }
+    
+    class UserPreferences <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - theme: String
+        - language: String
+        - timezone: String
+        --
+        + getters/setters()
+        + getDefaultPreferences(): UserPreferences
+    }
+    
+    enum AccountStatus {
+        PENDING_VERIFICATION
+        ACTIVE
+        SUSPENDED
+        DELETED
+    }
+}
+  User "1" -- "0..*" EmailVerificationToken : has
+  User "1" -- "0..*" PasswordResetToken : has
+  User "1" -- "0..*" RefreshToken : has
+  User "1" -- "1" UserPreferences : has
+  User "1" -- "0..*" JwtBlacklist : has
+
+note right of User
+Main entity representing
+a user in the system
+end note
+
+@enduml

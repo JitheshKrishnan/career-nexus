@@ -1,0 +1,709 @@
+@startuml Job Matcher Service Class Diagram
+!define ENTITY_COLOR #E1F5FE
+!define REPOSITORY_COLOR #FFF9C4
+!define SERVICE_COLOR #F0F4C3
+!define CONTROLLER_COLOR #FFE0B2
+!define DTO_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+' ============================================
+' PACKAGE: MODEL (ENTITIES)
+' ============================================
+package "com.careernexus.jobmatcher.model" <<Rectangle>> {
+    
+    class Job <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - externalJobId: String
+        - source: JobSource
+        - title: String
+        - companyName: String
+        - companyLogoUrl: String
+        - location: String
+        - jobType: JobType
+        - experienceRequired: String
+        - salaryMin: BigDecimal
+        - salaryMax: BigDecimal
+        - salaryCurrency: String
+        - description: String
+        - requirements: String
+        - responsibilities: String
+        - benefits: String
+        - applicationUrl: String
+        - postedDate: LocalDate
+        - expiryDate: LocalDate
+        - isActive: Boolean
+        - viewCount: Integer
+        - clickCount: Integer
+        - fetchedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + incrementViewCount(): void
+        + incrementClickCount(): void
+    }
+    
+    class JobSkill <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - jobId: Long
+        - skillName: String
+        - isRequired: Boolean
+        - proficiencyLevel: ProficiencyLevel
+        --
+        + getters/setters()
+    }
+    
+    class JobMatch <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - jobId: Long
+        - matchScore: BigDecimal
+        - matchedSkillsCount: Integer
+        - missingSkillsCount: Integer
+        - matchedSkills: String
+        - missingSkills: String
+        - experienceMatchScore: BigDecimal
+        - locationMatchScore: BigDecimal
+        - viewed: Boolean
+        - viewedAt: LocalDateTime
+        - clicked: Boolean
+        - clickedAt: LocalDateTime
+        - clickCount: Integer
+        - calculatedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + markAsViewed(): void
+        + markAsClicked(): void
+        + incrementClickCount(): void
+    }
+    
+    class UserJobSearch <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - searchQuery: String
+        - location: String
+        - jobType: String
+        - filters: String
+        - resultsCount: Integer
+        - hasResults: Boolean
+        - searchDurationMs: Integer
+        - searchedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class SavedJob <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - jobId: Long
+        - notes: String
+        - savedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class JobClickHistory <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - jobId: Long
+        - matchScore: BigDecimal
+        - clickedAt: LocalDateTime
+        - userAgent: String
+        - referrerPage: String
+        - destinationUrl: String
+        - applied: Boolean
+        - gotInterview: Boolean
+        - feedbackCollectedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class JobAlert <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - isEnabled: Boolean
+        - frequency: AlertFrequency
+        - minMatchScore: BigDecimal
+        - searchCriteria: String
+        - lastSentAt: LocalDateTime
+        - jobsSentCount: Integer
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + shouldSendAlert(): boolean
+    }
+    
+    enum JobSource {
+        NAUKRI
+        LINKEDIN
+        GLASSDOOR
+        INDEED
+        MANUAL
+    }
+    
+    enum JobType {
+        FULL_TIME
+        PART_TIME
+        CONTRACT
+        INTERNSHIP
+        REMOTE
+    }
+    
+    enum ProficiencyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+        EXPERT
+    }
+    
+    enum AlertFrequency {
+        DAILY
+        WEEKLY
+        IMMEDIATE
+    }
+}
+
+' ============================================
+' PACKAGE: REPOSITORY
+' ============================================
+package "com.careernexus.jobmatcher.repository" <<Rectangle>> {
+    
+    interface JobRepository <<Repository>> REPOSITORY_COLOR {
+        + findByExternalJobId(externalJobId: String): Optional<Job>
+        + findBySource(source: JobSource): List<Job>
+        + findByIsActiveTrue(): List<Job>
+        + findByLocationContaining(location: String): List<Job>
+        + findByJobType(jobType: JobType): List<Job>
+        + searchJobs(query: String): List<Job>
+        + findRecentJobs(days: int): List<Job>
+        + deactivateExpiredJobs(): void
+        + countByIsActiveTrue(): long
+    }
+    
+    interface JobSkillRepository <<Repository>> REPOSITORY_COLOR {
+        + findByJobId(jobId: Long): List<JobSkill>
+        + findBySkillName(skillName: String): List<JobSkill>
+        + findRequiredSkillsByJobId(jobId: Long): List<JobSkill>
+        + countByJobId(jobId: Long): long
+    }
+    
+    interface JobMatchRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<JobMatch>
+        + findByUserIdAndJobId(userId: Long, jobId: Long): Optional<JobMatch>
+        + findTopMatchesByUserId(userId: Long, limit: int): List<JobMatch>
+        + findByUserIdAndMatchScoreGreaterThan(userId: Long, score: BigDecimal): List<JobMatch>
+        + findByUserIdAndViewed(userId: Long, viewed: Boolean): List<JobMatch>
+        + countByUserId(userId: Long): long
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface UserJobSearchRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<UserJobSearch>
+        + findRecentSearches(userId: Long, limit: int): List<UserJobSearch>
+        + findPopularSearchQueries(limit: int): List<String>
+        + countByUserId(userId: Long): long
+    }
+    
+    interface SavedJobRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<SavedJob>
+        + findByUserIdAndJobId(userId: Long, jobId: Long): Optional<SavedJob>
+        + existsByUserIdAndJobId(userId: Long, jobId: Long): boolean
+        + deleteByUserIdAndJobId(userId: Long, jobId: Long): void
+        + countByUserId(userId: Long): long
+    }
+    
+    interface JobClickHistoryRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<JobClickHistory>
+        + findByJobId(jobId: Long): List<JobClickHistory>
+        + countClicksByJobId(jobId: Long): long
+        + findPopularJobs(limit: int): List<Object[]>
+    }
+    
+    interface JobAlertRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<JobAlert>
+        + findActiveAlerts(): List<JobAlert>
+        + findAlertsToSend(currentTime: LocalDateTime): List<JobAlert>
+    }
+}
+
+' ============================================
+' PACKAGE: DTO
+' ============================================
+package "com.careernexus.jobmatcher.dto" <<Rectangle>> {
+    
+    class JobDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - title: String
+        - companyName: String
+        - companyLogoUrl: String
+        - location: String
+        - jobType: String
+        - experienceRequired: String
+        - salaryMin: BigDecimal
+        - salaryMax: BigDecimal
+        - description: String
+        - requirements: String
+        - applicationUrl: String
+        - postedDate: LocalDate
+        - skills: List<JobSkillDTO>
+        --
+        + getters/setters()
+    }
+    
+    class JobSkillDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - isRequired: Boolean
+        - proficiencyLevel: String
+        --
+        + getters/setters()
+    }
+    
+    class JobSearchRequest <<DTO>> DTO_COLOR {
+        - query: String
+        - location: String
+        - jobType: String
+        - experienceLevel: String
+        - salaryMin: BigDecimal
+        - salaryMax: BigDecimal
+        - skills: List<String>
+        - remoteOnly: Boolean
+        - postedWithinDays: Integer
+        --
+        + validate(): void
+    }
+    
+    class JobSearchResponse <<DTO>> DTO_COLOR {
+        - jobs: List<JobDTO>
+        - totalCount: Integer
+        - page: Integer
+        - pageSize: Integer
+        - searchDuration: Long
+        --
+        + getters/setters()
+    }
+    
+    class JobMatchDTO <<DTO>> DTO_COLOR {
+        - jobId: Long
+        - job: JobDTO
+        - matchScore: BigDecimal
+        - matchedSkills: List<String>
+        - missingSkills: List<String>
+        - matchedSkillsCount: Integer
+        - missingSkillsCount: Integer
+        - experienceMatchScore: BigDecimal
+        - locationMatchScore: BigDecimal
+        - viewed: Boolean
+        - clicked: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class JobRecommendationRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - limit: Integer
+        - minMatchScore: BigDecimal
+        - includeViewed: Boolean
+        --
+        + validate(): void
+    }
+    
+    class JobRecommendationResponse <<DTO>> DTO_COLOR {
+        - matches: List<JobMatchDTO>
+        - totalMatches: Integer
+        - averageMatchScore: BigDecimal
+        --
+        + getters/setters()
+    }
+    
+    class TrackClickRequest <<DTO>> DTO_COLOR {
+        - jobId: Long
+        - referrerPage: String
+        - userAgent: String
+        --
+        + validate(): void
+    }
+    
+    class SaveJobRequest <<DTO>> DTO_COLOR {
+        - jobId: Long
+        - notes: String
+        --
+        + validate(): void
+    }
+    
+    class JobAlertRequest <<DTO>> DTO_COLOR {
+        - isEnabled: Boolean
+        - frequency: String
+        - minMatchScore: BigDecimal
+        - searchCriteria: Map<String, Object>
+        --
+        + validate(): void
+    }
+}
+
+' ============================================
+' PACKAGE: SERVICE
+' ============================================
+package "com.careernexus.jobmatcher.service" <<Rectangle>> {
+    
+    interface JobService <<Service>> SERVICE_COLOR {
+        + getJobById(jobId: Long): JobDTO
+        + searchJobs(request: JobSearchRequest): JobSearchResponse
+        + getRecentJobs(days: int): List<JobDTO>
+        + getJobsBySource(source: JobSource): List<JobDTO>
+        + deactivateExpiredJobs(): void
+    }
+    
+    class JobServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobSkillRepository: JobSkillRepository
+        - searchRepository: UserJobSearchRepository
+        - jobMapper: JobMapper
+        - elasticsearchService: ElasticsearchService
+        --
+        + getJobById(jobId: Long): JobDTO
+        + searchJobs(request: JobSearchRequest): JobSearchResponse
+        - buildSearchQuery(request: JobSearchRequest): String
+        - saveSearchHistory(userId: Long, request: JobSearchRequest): void
+    }
+    
+    interface JobScraperService <<Service>> SERVICE_COLOR {
+        + scrapeJobs(source: JobSource): List<Job>
+        + scrapeNaukriJobs(): List<Job>
+        + scrapeLinkedInJobs(): List<Job>
+        + parseJobData(html: String): Job
+    }
+    
+    class JobScraperServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobSkillRepository: JobSkillRepository
+        - httpClient: RestTemplate
+        --
+        + scrapeJobs(source: JobSource): List<Job>
+        + scrapeNaukriJobs(): List<Job>
+        - parseJobData(html: String): Job
+        - extractSkills(description: String): List<String>
+    }
+    
+    interface JobMatchingService <<Service>> SERVICE_COLOR {
+        + calculateJobMatches(userId: Long): List<JobMatchDTO>
+        + calculateMatchScore(userSkills: List<String>, jobSkills: List<JobSkill>): BigDecimal
+        + getTopMatches(userId: Long, limit: int): List<JobMatchDTO>
+        + recalculateMatches(userId: Long): void
+    }
+    
+    class JobMatchingServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobMatchRepository: JobMatchRepository
+        - resumeServiceClient: ResumeServiceClient
+        - matchScoreCalculator: MatchScoreCalculator
+        - cacheService: CacheService
+        --
+        + calculateJobMatches(userId: Long): List<JobMatchDTO>
+        + calculateMatchScore(userSkills: List<String>, jobSkills: List<JobSkill>): BigDecimal
+        - getUserSkills(userId: Long): List<String>
+        - calculateExperienceMatch(userExp: int, jobExp: String): BigDecimal
+        - calculateLocationMatch(userLoc: String, jobLoc: String): BigDecimal
+    }
+    
+    interface SavedJobService <<Service>> SERVICE_COLOR {
+        + saveJob(userId: Long, request: SaveJobRequest): void
+        + getSavedJobs(userId: Long): List<JobDTO>
+        + unsaveJob(userId: Long, jobId: Long): void
+        + isJobSaved(userId: Long, jobId: Long): boolean
+    }
+    
+    class SavedJobServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - savedJobRepository: SavedJobRepository
+        - jobRepository: JobRepository
+        - jobMapper: JobMapper
+        --
+        + saveJob(userId: Long, request: SaveJobRequest): void
+        + getSavedJobs(userId: Long): List<JobDTO>
+        + unsaveJob(userId: Long, jobId: Long): void
+    }
+    
+    interface JobTrackingService <<Service>> SERVICE_COLOR {
+        + trackView(userId: Long, jobId: Long): void
+        + trackClick(userId: Long, jobId: Long, request: TrackClickRequest): String
+        + getClickStats(jobId: Long): Map<String, Object>
+        + getUserEngagement(userId: Long): Map<String, Object>
+    }
+    
+    class JobTrackingServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobMatchRepository: JobMatchRepository
+        - clickHistoryRepository: JobClickHistoryRepository
+        --
+        + trackView(userId: Long, jobId: Long): void
+        + trackClick(userId: Long, jobId: Long, request: TrackClickRequest): String
+        + getClickStats(jobId: Long): Map<String, Object>
+        - updateJobMatch(userId: Long, jobId: Long): void
+    }
+    
+    interface JobAlertService <<Service>> SERVICE_COLOR {
+        + createAlert(userId: Long, request: JobAlertRequest): void
+        + getAlerts(userId: Long): List<JobAlert>
+        + updateAlert(alertId: Long, request: JobAlertRequest): void
+        + deleteAlert(alertId: Long): void
+        + processAlerts(): void
+    }
+    
+    class JobAlertServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobAlertRepository: JobAlertRepository
+        - jobMatchingService: JobMatchingService
+        - notificationServiceClient: NotificationServiceClient
+        --
+        + createAlert(userId: Long, request: JobAlertRequest): void
+        + processAlerts(): void
+        - sendAlertNotification(alert: JobAlert, matches: List<JobMatch>): void
+    }
+}
+
+' ============================================
+' PACKAGE: CONTROLLER
+' ============================================
+package "com.careernexus.jobmatcher.controller" <<Rectangle>> {
+    
+    class JobController <<RestController>> CONTROLLER_COLOR {
+        - jobService: JobService
+        --
+        + getJob(jobId: Long): ResponseEntity<JobDTO>
+        + searchJobs(request: JobSearchRequest): ResponseEntity<JobSearchResponse>
+        + getRecentJobs(days: Integer): ResponseEntity<List<JobDTO>>
+    }
+    
+    class JobMatchController <<RestController>> CONTROLLER_COLOR {
+        - jobMatchingService: JobMatchingService
+        --
+        + getJobMatches(userId: Long): ResponseEntity<List<JobMatchDTO>>
+        + getTopMatches(userId: Long, limit: Integer): ResponseEntity<List<JobMatchDTO>>
+        + recalculateMatches(userId: Long): ResponseEntity<Void>
+    }
+    
+    class SavedJobController <<RestController>> CONTROLLER_COLOR {
+        - savedJobService: SavedJobService
+        --
+        + saveJob(userId: Long, request: SaveJobRequest): ResponseEntity<Void>
+        + getSavedJobs(userId: Long): ResponseEntity<List<JobDTO>>
+        + unsaveJob(userId: Long, jobId: Long): ResponseEntity<Void>
+        + isJobSaved(userId: Long, jobId: Long): ResponseEntity<Boolean>
+    }
+    
+    class JobTrackingController <<RestController>> CONTROLLER_COLOR {
+        - trackingService: JobTrackingService
+        --
+        + trackView(userId: Long, jobId: Long): ResponseEntity<Void>
+        + trackClick(userId: Long, jobId: Long, request: TrackClickRequest): ResponseEntity<String>
+        + getClickStats(jobId: Long): ResponseEntity<Map<String, Object>>
+    }
+    
+    class JobAlertController <<RestController>> CONTROLLER_COLOR {
+        - jobAlertService: JobAlertService
+        --
+        + createAlert(userId: Long, request: JobAlertRequest): ResponseEntity<Void>
+        + getAlerts(userId: Long): ResponseEntity<List<JobAlert>>
+        + updateAlert(alertId: Long, request: JobAlertRequest): ResponseEntity<Void>
+        + deleteAlert(alertId: Long): ResponseEntity<Void>
+    }
+}
+
+' ============================================
+' PACKAGE: EXCEPTION
+' ============================================
+package "com.careernexus.jobmatcher.exception" <<Rectangle>> {
+    
+    class JobNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + JobNotFoundException(jobId: Long)
+    }
+    
+    class JobScrapingException <<Exception>> EXCEPTION_COLOR {
+        + JobScrapingException(message: String, cause: Throwable)
+    }
+    
+    class InvalidSearchException <<Exception>> EXCEPTION_COLOR {
+        + InvalidSearchException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleJobNotFoundException(ex: JobNotFoundException): ResponseEntity<ErrorResponse>
+        + handleJobScrapingException(ex: JobScrapingException): ResponseEntity<ErrorResponse>
+        + handleInvalidSearchException(ex: InvalidSearchException): ResponseEntity<ErrorResponse>
+    }
+}
+
+' ============================================
+' PACKAGE: UTIL
+' ============================================
+package "com.careernexus.jobmatcher.util" <<Rectangle>> {
+    
+    class JobMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(job: Job): JobDTO
+        + toEntity(dto: JobDTO): Job
+        + toMatchDTO(match: JobMatch, job: Job): JobMatchDTO
+    }
+    
+    class MatchScoreCalculator <<Utility>> UTIL_COLOR {
+        + calculateSkillMatch(userSkills: List<String>, jobSkills: List<JobSkill>): BigDecimal
+        + calculateExperienceMatch(userExp: int, jobExp: String): BigDecimal
+        + calculateLocationMatch(userLoc: String, jobLoc: String): BigDecimal
+        + calculateOverallScore(skillScore: BigDecimal, expScore: BigDecimal, locScore: BigDecimal): BigDecimal
+        - calculateWeightedScore(scores: Map<String, BigDecimal>): BigDecimal
+    }
+    
+    class SkillExtractor <<Utility>> UTIL_COLOR {
+        + extractSkillsFromText(text: String): List<String>
+        + normalizeSkillName(skill: String): String
+        + isValidSkill(skill: String): boolean
+    }
+    
+    class SearchQueryBuilder <<Utility>> UTIL_COLOR {
+        + buildElasticsearchQuery(request: JobSearchRequest): String
+        + buildSQLQuery(request: JobSearchRequest): String
+        + applyFilters(query: String, filters: Map<String, Object>): String
+    }
+}
+
+' ============================================
+' PACKAGE: CONFIG
+' ============================================
+package "com.careernexus.jobmatcher.config" <<Rectangle>> {
+    
+    class ElasticsearchConfig <<Configuration>> CONFIG_COLOR {
+        + restHighLevelClient(): RestHighLevelClient
+        + elasticsearchOperations(): ElasticsearchOperations
+    }
+    
+    class ScheduledJobsConfig <<Configuration>> CONFIG_COLOR {
+        - jobScraperService: JobScraperService
+        - jobAlertService: JobAlertService
+        --
+        + scrapeJobsPeriodically(): void
+        + deactivateExpiredJobs(): void
+        + processJobAlerts(): void
+    }
+    
+    class CacheConfig <<Configuration>> CONFIG_COLOR {
+        + cacheManager(): CacheManager
+        + redisCacheConfiguration(): RedisCacheConfiguration
+    }
+}
+
+' ============================================
+' PACKAGE: CLIENT
+' ============================================
+package "com.careernexus.jobmatcher.client" <<Rectangle>> {
+    
+    interface ResumeServiceClient <<FeignClient>> CONFIG_COLOR {
+        + getUserResume(userId: Long): ResumeDTO
+        + getUserSkills(userId: Long): List<SkillDTO>
+    }
+    
+    interface NotificationServiceClient <<FeignClient>> CONFIG_COLOR {
+        + sendJobMatchAlert(userId: Long, jobs: List<JobDTO>): void
+    }
+    
+    class ResumeDTO <<DTO>> DTO_COLOR {
+        - userId: Long
+        - skills: List<SkillDTO>
+        - experience: List<ExperienceDTO>
+        --
+        + getters/setters()
+    }
+    
+    class SkillDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - proficiencyLevel: String
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+' Entity relationships
+Job "1" -- "0..*" JobSkill
+Job "1" -- "0..*" JobMatch
+Job "1" -- "0..*" SavedJob
+Job "1" -- "0..*" JobClickHistory
+
+' Repository extends JpaRepository
+JobRepository --|> JpaRepository
+JobSkillRepository --|> JpaRepository
+JobMatchRepository --|> JpaRepository
+UserJobSearchRepository --|> JpaRepository
+SavedJobRepository --|> JpaRepository
+JobClickHistoryRepository --|> JpaRepository
+JobAlertRepository --|> JpaRepository
+
+' Service implementations
+JobServiceImpl ..|> JobService
+JobScraperServiceImpl ..|> JobScraperService
+JobMatchingServiceImpl ..|> JobMatchingService
+SavedJobServiceImpl ..|> SavedJobService
+JobTrackingServiceImpl ..|> JobTrackingService
+JobAlertServiceImpl ..|> JobAlertService
+
+' Service dependencies
+JobServiceImpl --> JobRepository
+JobServiceImpl --> JobSkillRepository
+JobServiceImpl --> UserJobSearchRepository
+
+JobScraperServiceImpl --> JobRepository
+JobScraperServiceImpl --> JobSkillRepository
+
+JobMatchingServiceImpl --> JobRepository
+JobMatchingServiceImpl --> JobMatchRepository
+JobMatchingServiceImpl --> ResumeServiceClient
+JobMatchingServiceImpl --> MatchScoreCalculator
+
+SavedJobServiceImpl --> SavedJobRepository
+SavedJobServiceImpl --> JobRepository
+
+JobTrackingServiceImpl --> JobRepository
+JobTrackingServiceImpl --> JobMatchRepository
+JobTrackingServiceImpl --> JobClickHistoryRepository
+
+JobAlertServiceImpl --> JobAlertRepository
+JobAlertServiceImpl --> JobMatchingService
+JobAlertServiceImpl --> NotificationServiceClient
+
+' Controller dependencies
+JobController --> JobService
+JobMatchController --> JobMatchingService
+SavedJobController --> SavedJobService
+JobTrackingController --> JobTrackingService
+JobAlertController --> JobAlertService
+
+note right of Job
+  Main entity storing
+  job listings from
+  multiple sources
+end note
+
+note right of JobMatchingService
+  Core matching logic:
+  Calculates match scores
+  based on skills, experience,
+  and location
+end note
+
+note right of MatchScoreCalculator
+  Weighted scoring algorithm:
+  - Skills: 60%
+  - Experience: 25%
+  - Location: 15%
+end note
+
+@enduml

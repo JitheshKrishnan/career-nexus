@@ -1,0 +1,153 @@
+@startuml UserService_Services
+
+!define SERVICE_COLOR #F0F4C3
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.userservice.service" <<Rectangle>> {
+    
+    interface UserService <<Service>> SERVICE_COLOR {
+        + registerUser(request: UserRegistrationRequest): UserRegistrationResponse
+        + getUserById(userId: Long): UserDTO
+        + getUserByEmail(email: String): UserDTO
+        + updateUser(userId: Long, request: UserUpdateRequest): UserDTO
+        + deleteUser(userId: Long): void
+        + verifyEmail(token: String): EmailVerificationResponse
+        + resendVerificationEmail(email: String): void
+        + getAllUsers(): List<UserDTO>
+        + getUsersByStatus(status: AccountStatus): List<UserDTO>
+    }
+    
+    class UserServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userRepository: UserRepository
+        - emailVerificationTokenRepository: EmailVerificationTokenRepository
+        - userPreferencesRepository: UserPreferencesRepository
+        - passwordEncoder: PasswordEncoder
+        - emailService: EmailService
+        - tokenService: TokenService
+        --
+        + registerUser(request: UserRegistrationRequest): UserRegistrationResponse
+        + getUserById(userId: Long): UserDTO
+        + updateUser(userId: Long, request: UserUpdateRequest): UserDTO
+        + verifyEmail(token: String): EmailVerificationResponse
+        - createDefaultPreferences(userId: Long): void
+        - generateVerificationToken(userId: Long): String
+        - validateRegistrationRequest(request: UserRegistrationRequest): void
+    }
+    
+    interface AuthService <<Service>> SERVICE_COLOR {
+        + login(request: LoginRequest): LoginResponse
+        + logout(userId: Long, accessToken: String): void
+        + refreshToken(request: TokenRefreshRequest): TokenRefreshResponse
+        + validateToken(token: String): boolean
+        + getUserIdFromToken(token: String): Long
+    }
+    
+    class AuthServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userRepository: UserRepository
+        - refreshTokenRepository: RefreshTokenRepository
+        - jwtBlacklistRepository: JwtBlacklistRepository
+        - passwordEncoder: PasswordEncoder
+        - jwtUtil: JwtUtil
+        --
+        + login(request: LoginRequest): LoginResponse
+        + logout(userId: Long, accessToken: String): void
+        + refreshToken(request: TokenRefreshRequest): TokenRefreshResponse
+        + validateToken(token: String): boolean
+        - generateAccessToken(user: User): String
+        - generateRefreshToken(user: User): RefreshToken
+        - blacklistToken(token: String, userId: Long): void
+    }
+    
+    interface PasswordResetService <<Service>> SERVICE_COLOR {
+        + requestPasswordReset(request: PasswordResetRequest): void
+        + resetPassword(request: PasswordResetConfirmRequest): void
+        + validateResetToken(token: String): boolean
+    }
+    
+    class PasswordResetServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userRepository: UserRepository
+        - passwordResetTokenRepository: PasswordResetTokenRepository
+        - passwordEncoder: PasswordEncoder
+        - emailService: EmailService
+        --
+        + requestPasswordReset(request: PasswordResetRequest): void
+        + resetPassword(request: PasswordResetConfirmRequest): void
+        - generateResetToken(userId: Long): String
+        - sendResetEmail(email: String, token: String): void
+    }
+    
+    interface TokenService <<Service>> SERVICE_COLOR {
+        + generateEmailVerificationToken(userId: Long): String
+        + validateEmailVerificationToken(token: String): boolean
+        + generatePasswordResetToken(userId: Long): String
+        + validatePasswordResetToken(token: String): boolean
+        + cleanupExpiredTokens(): void
+    }
+    
+    class TokenServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - emailVerificationTokenRepository: EmailVerificationTokenRepository
+        - passwordResetTokenRepository: PasswordResetTokenRepository
+        --
+        + generateEmailVerificationToken(userId: Long): String
+        + validateEmailVerificationToken(token: String): boolean
+        + cleanupExpiredTokens(): void
+        - generateSecureToken(): String
+    }
+    
+    interface EmailService <<Service>> SERVICE_COLOR {
+        + sendVerificationEmail(email: String, token: String): void
+        + sendPasswordResetEmail(email: String, token: String): void
+        + sendWelcomeEmail(email: String, fullName: String): void
+    }
+    
+    class EmailServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - notificationServiceClient: NotificationServiceClient
+        - emailTemplateLoader: EmailTemplateLoader
+        --
+        + sendVerificationEmail(email: String, token: String): void
+        + sendPasswordResetEmail(email: String, token: String): void
+        - buildVerificationEmailContent(token: String): String
+    }
+}
+
+' Service implementations
+UserServiceImpl ..|> UserService
+AuthServiceImpl ..|> AuthService
+PasswordResetServiceImpl ..|> PasswordResetService
+TokenServiceImpl ..|> TokenService
+EmailServiceImpl ..|> EmailService
+
+' Service dependencies
+UserServiceImpl --> UserRepository : uses
+UserServiceImpl --> EmailVerificationTokenRepository : uses
+UserServiceImpl --> UserPreferencesRepository : uses
+UserServiceImpl --> EmailService : uses
+UserServiceImpl --> TokenService : uses
+UserServiceImpl --> UserMapper : uses
+
+AuthServiceImpl --> UserRepository : uses
+AuthServiceImpl --> RefreshTokenRepository : uses
+AuthServiceImpl --> JwtBlacklistRepository : uses
+AuthServiceImpl --> JwtUtil : uses
+
+PasswordResetServiceImpl --> UserRepository : uses
+PasswordResetServiceImpl --> PasswordResetTokenRepository : uses
+PasswordResetServiceImpl --> EmailService : uses
+
+TokenServiceImpl --> EmailVerificationTokenRepository : uses
+TokenServiceImpl --> PasswordResetTokenRepository : uses
+TokenServiceImpl --> TokenGenerator : uses
+
+EmailServiceImpl --> NotificationServiceClient : uses
+
+note right of UserService
+  Main service interface for
+  user-related operations
+end note
+
+@enduml

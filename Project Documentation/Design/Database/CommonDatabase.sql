@@ -33,4 +33,3 @@ CREATE TABLE audit_logs (
     INDEX idx_action (action),
     INDEX idx_created_at (created_at)
 );
-
