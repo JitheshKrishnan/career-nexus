@@ -1,0 +1,62 @@
+@startuml Job Matcher Service Class Diagram
+
+!define CONTROLLER_COLOR #FFE0B2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.controller" <<Rectangle>> {
+    
+    class JobController <<RestController>> CONTROLLER_COLOR {
+        - jobService: JobService
+        --
+        + getJob(jobId: Long): ResponseEntity<JobDTO>
+        + searchJobs(request: JobSearchRequest): ResponseEntity<JobSearchResponse>
+        + getRecentJobs(days: Integer): ResponseEntity<List<JobDTO>>
+    }
+    
+    class JobMatchController <<RestController>> CONTROLLER_COLOR {
+        - jobMatchingService: JobMatchingService
+        --
+        + getJobMatches(userId: Long): ResponseEntity<List<JobMatchDTO>>
+        + getTopMatches(userId: Long, limit: Integer): ResponseEntity<List<JobMatchDTO>>
+        + recalculateMatches(userId: Long): ResponseEntity<Void>
+    }
+    
+    class SavedJobController <<RestController>> CONTROLLER_COLOR {
+        - savedJobService: SavedJobService
+        --
+        + saveJob(userId: Long, request: SaveJobRequest): ResponseEntity<Void>
+        + getSavedJobs(userId: Long): ResponseEntity<List<JobDTO>>
+        + unsaveJob(userId: Long, jobId: Long): ResponseEntity<Void>
+        + isJobSaved(userId: Long, jobId: Long): ResponseEntity<Boolean>
+    }
+    
+    class JobTrackingController <<RestController>> CONTROLLER_COLOR {
+        - trackingService: JobTrackingService
+        --
+        + trackView(userId: Long, jobId: Long): ResponseEntity<Void>
+        + trackClick(userId: Long, jobId: Long, request: TrackClickRequest): ResponseEntity<String>
+        + getClickStats(jobId: Long): ResponseEntity<Map<String, Object>>
+    }
+    
+    class JobAlertController <<RestController>> CONTROLLER_COLOR {
+        - jobAlertService: JobAlertService
+        --
+        + createAlert(userId: Long, request: JobAlertRequest): ResponseEntity<Void>
+        + getAlerts(userId: Long): ResponseEntity<List<JobAlert>>
+        + updateAlert(alertId: Long, request: JobAlertRequest): ResponseEntity<Void>
+        + deleteAlert(alertId: Long): ResponseEntity<Void>
+    }
+}
+
+JobController --> JobService
+JobMatchController --> JobMatchingService
+SavedJobController --> SavedJobService
+JobTrackingController --> JobTrackingService
+JobAlertController --> JobAlertService
+
+@enduml

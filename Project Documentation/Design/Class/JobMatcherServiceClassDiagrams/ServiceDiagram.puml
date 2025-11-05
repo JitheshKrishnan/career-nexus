@@ -1,0 +1,143 @@
+@startuml Job Matcher Service Class Diagram
+
+!define SERVICE_COLOR #F0F4C3
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.service" <<Rectangle>> {
+    
+    interface JobService <<Service>> SERVICE_COLOR {
+        + getJobById(jobId: Long): JobDTO
+        + searchJobs(request: JobSearchRequest): JobSearchResponse
+        + getRecentJobs(days: int): List<JobDTO>
+        + getJobsBySource(source: JobSource): List<JobDTO>
+        + deactivateExpiredJobs(): void
+    }
+    
+    class JobServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobSkillRepository: JobSkillRepository
+        - searchRepository: UserJobSearchRepository
+        - jobMapper: JobMapper
+        - elasticsearchService: ElasticsearchService
+        --
+        + getJobById(jobId: Long): JobDTO
+        + searchJobs(request: JobSearchRequest): JobSearchResponse
+        - buildSearchQuery(request: JobSearchRequest): String
+        - saveSearchHistory(userId: Long, request: JobSearchRequest): void
+    }
+    
+    interface JobScraperService <<Service>> SERVICE_COLOR {
+        + scrapeJobs(source: JobSource): List<Job>
+        + scrapeNaukriJobs(): List<Job>
+        + scrapeLinkedInJobs(): List<Job>
+        + parseJobData(html: String): Job
+    }
+    
+    class JobScraperServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobSkillRepository: JobSkillRepository
+        - httpClient: RestTemplate
+        --
+        + scrapeJobs(source: JobSource): List<Job>
+        + scrapeNaukriJobs(): List<Job>
+        - parseJobData(html: String): Job
+        - extractSkills(description: String): List<String>
+    }
+    
+    interface JobMatchingService <<Service>> SERVICE_COLOR {
+        + calculateJobMatches(userId: Long): List<JobMatchDTO>
+        + calculateMatchScore(userSkills: List<String>, jobSkills: List<JobSkill>): BigDecimal
+        + getTopMatches(userId: Long, limit: int): List<JobMatchDTO>
+        + recalculateMatches(userId: Long): void
+    }
+    
+    class JobMatchingServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobMatchRepository: JobMatchRepository
+        - resumeServiceClient: ResumeServiceClient
+        - matchScoreCalculator: MatchScoreCalculator
+        - cacheService: CacheService
+        --
+        + calculateJobMatches(userId: Long): List<JobMatchDTO>
+        + calculateMatchScore(userSkills: List<String>, jobSkills: List<JobSkill>): BigDecimal
+        - getUserSkills(userId: Long): List<String>
+        - calculateExperienceMatch(userExp: int, jobExp: String): BigDecimal
+        - calculateLocationMatch(userLoc: String, jobLoc: String): BigDecimal
+    }
+    
+    interface SavedJobService <<Service>> SERVICE_COLOR {
+        + saveJob(userId: Long, request: SaveJobRequest): void
+        + getSavedJobs(userId: Long): List<JobDTO>
+        + unsaveJob(userId: Long, jobId: Long): void
+        + isJobSaved(userId: Long, jobId: Long): boolean
+    }
+    
+    class SavedJobServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - savedJobRepository: SavedJobRepository
+        - jobRepository: JobRepository
+        - jobMapper: JobMapper
+        --
+        + saveJob(userId: Long, request: SaveJobRequest): void
+        + getSavedJobs(userId: Long): List<JobDTO>
+        + unsaveJob(userId: Long, jobId: Long): void
+    }
+    
+    interface JobTrackingService <<Service>> SERVICE_COLOR {
+        + trackView(userId: Long, jobId: Long): void
+        + trackClick(userId: Long, jobId: Long, request: TrackClickRequest): String
+        + getClickStats(jobId: Long): Map<String, Object>
+        + getUserEngagement(userId: Long): Map<String, Object>
+    }
+    
+    class JobTrackingServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobRepository: JobRepository
+        - jobMatchRepository: JobMatchRepository
+        - clickHistoryRepository: JobClickHistoryRepository
+        --
+        + trackView(userId: Long, jobId: Long): void
+        + trackClick(userId: Long, jobId: Long, request: TrackClickRequest): String
+        + getClickStats(jobId: Long): Map<String, Object>
+        - updateJobMatch(userId: Long, jobId: Long): void
+    }
+    
+    interface JobAlertService <<Service>> SERVICE_COLOR {
+        + createAlert(userId: Long, request: JobAlertRequest): void
+        + getAlerts(userId: Long): List<JobAlert>
+        + updateAlert(alertId: Long, request: JobAlertRequest): void
+        + deleteAlert(alertId: Long): void
+        + processAlerts(): void
+    }
+    
+    class JobAlertServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - jobAlertRepository: JobAlertRepository
+        - jobMatchingService: JobMatchingService
+        - notificationServiceClient: NotificationServiceClient
+        --
+        + createAlert(userId: Long, request: JobAlertRequest): void
+        + processAlerts(): void
+        - sendAlertNotification(alert: JobAlert, matches: List<JobMatch>): void
+    }
+}
+
+' Service implementations
+JobServiceImpl ..|> JobService
+JobScraperServiceImpl ..|> JobScraperService
+JobMatchingServiceImpl ..|> JobMatchingService
+SavedJobServiceImpl ..|> SavedJobService
+JobTrackingServiceImpl ..|> JobTrackingService
+JobAlertServiceImpl ..|> JobAlertService
+JobAlertServiceImpl --> JobMatchingService
+
+note right of JobMatchingService
+  Core matching logic:
+  Calculates match scores
+  based on skills, experience,
+  and location
+end note
+
+@enduml

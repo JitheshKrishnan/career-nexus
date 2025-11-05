@@ -9,6 +9,8 @@ skinparam roundcorner 5
 skinparam packageStyle rectangle
 
 package "com.careernexus.userservice.repository" <<Rectangle>> {
+
+    interface JpaRepository {}
     
     interface UserRepository <<Repository>> REPOSITORY_COLOR {
         + findByEmail(email: String): Optional<User>
@@ -19,24 +21,22 @@ package "com.careernexus.userservice.repository" <<Rectangle>> {
         + countByAccountStatus(status: AccountStatus): long
     }
     
-    interface EmailVerificationTokenRepository <<Repository>> REPOSITORY_COLOR {
-        + findByToken(token: String): Optional<EmailVerificationToken>
-        + findByUserId(userId: Long): List<EmailVerificationToken>
+    ' ===== Base Token Abstraction =====
+    interface BaseTokenRepository<T extends Token> <<Repository>> REPOSITORY_COLOR {
+        + findByToken(token: String): Optional<T>
+        + findByUserId(userId: Long): List<T>
         + deleteByExpiresAtBefore(date: LocalDateTime): void
+    }
+
+    interface EmailVerificationTokenRepository <<Repository>> REPOSITORY_COLOR {
         + existsByUserIdAndVerifiedAtIsNull(userId: Long): boolean
     }
     
     interface PasswordResetTokenRepository <<Repository>> REPOSITORY_COLOR {
-        + findByToken(token: String): Optional<PasswordResetToken>
-        + findByUserId(userId: Long): List<PasswordResetToken>
-        + deleteByExpiresAtBefore(date: LocalDateTime): void
         + deleteByUserId(userId: Long): void
     }
     
     interface RefreshTokenRepository <<Repository>> REPOSITORY_COLOR {
-        + findByToken(token: String): Optional<RefreshToken>
-        + findByUserId(userId: Long): List<RefreshToken>
-        + deleteByExpiresAtBefore(date: LocalDateTime): void
         + revokeAllByUserId(userId: Long): void
         + findByUserIdAndRevokedFalse(userId: Long): List<RefreshToken>
     }
@@ -53,10 +53,12 @@ package "com.careernexus.userservice.repository" <<Rectangle>> {
     }
 }
 
+BaseTokenRepository <|-- EmailVerificationTokenRepository
+BaseTokenRepository <|-- PasswordResetTokenRepository
+BaseTokenRepository <|-- RefreshTokenRepository
+
 UserRepository --|> JpaRepository
-EmailVerificationTokenRepository --|> JpaRepository
-PasswordResetTokenRepository --|> JpaRepository
-RefreshTokenRepository --|> JpaRepository
+BaseTokenRepository --|> JpaRepository
 JwtBlacklistRepository --|> JpaRepository
 UserPreferencesRepository --|> JpaRepository
 

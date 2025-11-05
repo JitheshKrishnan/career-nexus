@@ -1,0 +1,40 @@
+@startuml Resume Service Class DiagramBorderColor
+
+!define UTIL_COLOR #C8E6C9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.util" <<Rectangle>> {
+    
+    class ResumeMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(resume: Resume): ResumeDTO
+        + toEntity(dto: ResumeDTO): Resume
+        + toUploadResponse(resume: Resume): ResumeUploadResponse
+    }
+    
+    class SkillMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(skill: ResumeSkill): ResumeSkillDTO
+        + toEntity(dto: ResumeSkillDTO): ResumeSkill
+    }
+    
+    class FileValidator <<Utility>> UTIL_COLOR {
+        + validateFileType(file: MultipartFile): boolean
+        + validateFileSize(file: MultipartFile, maxSizeMB: int): boolean
+        + isAllowedExtension(filename: String): boolean
+    }
+    
+    class StorageResult <<ValueObject>> UTIL_COLOR {
+        - url: String
+        - identifier: String
+        - provider: StorageProvider
+        - metadata: Map<String, String>
+        --
+        + getters/setters()
+    }
+}
+
+@enduml

@@ -1,6 +1,8 @@
 @startuml UserService_Integration
 
 !define UTIL_COLOR #C8E6C9
+!define VALIDATOR_COLOR #FFCDD2
+!define MAPPER_COLOR #BBDEFB
 
 skinparam backgroundColor #FAFAFA
 skinparam classAttributeIconSize 0
@@ -31,8 +33,11 @@ package "com.careernexus.userservice.util" <<Rectangle>> {
         + generateSecureToken(length: int): String
         + hashToken(token: String): String
     }
-    
-    class PasswordValidator <<Utility>> UTIL_COLOR {
+}
+
+package "com.careernexus.userservice.validator" <<Rectangle>> {
+
+    class PasswordValidator <<Utility>> VALIDATOR_COLOR {
         + validatePassword(password: String): boolean
         + hasMinimumLength(password: String): boolean
         + hasUpperCase(password: String): boolean
@@ -41,12 +46,15 @@ package "com.careernexus.userservice.util" <<Rectangle>> {
         + hasSpecialChar(password: String): boolean
     }
     
-    class EmailValidator <<Utility>> UTIL_COLOR {
+    class EmailValidator <<Utility>> VALIDATOR_COLOR {
         + isValidEmail(email: String): boolean
         + isDisposableEmail(email: String): boolean
     }
+}
+
+package "com.careernexus.userservice.mapper" <<Rectangle>> {
     
-    class UserMapper <<Mapper>> UTIL_COLOR {
+    class UserMapper <<Mapper>> MAPPER_COLOR {
         + toDTO(user: User): UserDTO
         + toEntity(dto: UserDTO): User
         + toRegistrationResponse(user: User): UserRegistrationResponse

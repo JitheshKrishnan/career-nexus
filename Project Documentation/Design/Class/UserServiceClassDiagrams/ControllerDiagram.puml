@@ -28,7 +28,6 @@ package "com.careernexus.userservice.controller" <<Rectangle>> {
         + login(request: LoginRequest): ResponseEntity<LoginResponse>
         + logout(userId: Long, token: String): ResponseEntity<Void>
         + refreshToken(request: TokenRefreshRequest): ResponseEntity<TokenRefreshResponse>
-        + validateToken(token: String): ResponseEntity<Boolean>
     }
     
     class PasswordResetController <<RestController>> CONTROLLER_COLOR {

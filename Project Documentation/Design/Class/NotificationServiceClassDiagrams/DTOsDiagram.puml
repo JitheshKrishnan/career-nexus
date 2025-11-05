@@ -1,0 +1,119 @@
+@startuml Notification Service - DTO Package
+
+!define DTO_COLOR #E1BEE7
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Notification Service - DTO Package
+
+package "com.careernexus.notificationservice.dto" {
+    
+    class SendNotificationRequest <<DTO>> DTO_COLOR{
+        - userId: Long
+        - type: String
+        - channels: List<String>
+        - priority: String
+        - data: Map<String, Object>
+        - templateName: String
+        --
+        + validate(): void
+        + hasTemplate(): boolean
+    }
+    
+    class SendNotificationResponse <<DTO>> DTO_COLOR{
+        - notificationId: Long
+        - status: String
+        - channelResults: Map<String, Boolean>
+        - timestamp: LocalDateTime
+        --
+        + getters/setters()
+        + isSuccess(): boolean
+    }
+    
+    class NotificationDTO <<DTO>> DTO_COLOR{
+        - id: Long
+        - type: String
+        - title: String
+        - message: String
+        - data: Map<String, Object>
+        - link: String
+        - isRead: Boolean
+        - priority: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class EmailRequest <<DTO>> DTO_COLOR{
+        - to: String
+        - subject: String
+        - htmlBody: String
+        - textBody: String
+        - templateName: String
+        - templateData: Map<String, Object>
+        - fromEmail: String
+        - fromName: String
+        --
+        + validate(): void
+        + hasTemplate(): boolean
+    }
+    
+    class PushNotificationRequest <<DTO>> DTO_COLOR{
+        - userId: Long
+        - title: String
+        - body: String
+        - data: Map<String, Object>
+        - imageUrl: String
+        - clickAction: String
+        - sound: String
+        --
+        + validate(): void
+    }
+    
+    class NotificationPreferencesDTO <<DTO>> DTO_COLOR{
+        - userId: Long
+        - emailEnabled: Boolean
+        - pushEnabled: Boolean
+        - jobAlertsEnabled: Boolean
+        - learningRemindersEnabled: Boolean
+        - jobAlertFrequency: String
+        - learningReminderTime: String
+        --
+        + getters/setters()
+    }
+    
+    class RegisterDeviceRequest <<DTO>> DTO_COLOR{
+        - userId: Long
+        - deviceType: String
+        - fcmToken: String
+        - deviceName: String
+        - osVersion: String
+        - appVersion: String
+        --
+        + validate(): void
+    }
+    
+    class WebhookEventDTO <<DTO>> DTO_COLOR{
+        - event: String
+        - email: String
+        - messageId: String
+        - timestamp: LocalDateTime
+        - url: String
+        - reason: String
+        --
+        + getters/setters()
+        + isDelivered(): boolean
+        + isBounced(): boolean
+    }
+}
+
+note top of EmailRequest
+  Used for sending emails
+  Supports both template-based
+  and direct HTML/text content
+end note
+
+@enduml

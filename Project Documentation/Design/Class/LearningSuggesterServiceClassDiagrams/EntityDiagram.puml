@@ -1,0 +1,229 @@
+@startuml Learning Service - Entity Package
+
+!define ENTITY_COLOR #E1F5FE
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Learning Service - Entity Package (Model Layer)
+
+package "com.careernexus.learningservice.model" {
+    
+    class Course <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - externalCourseId: String {unique}
+        - source: CourseSource
+        - title: String
+        - instructorName: String
+        - description: String
+        - thumbnailUrl: String
+        - courseUrl: String
+        - price: BigDecimal
+        - currency: String
+        - durationHours: BigDecimal
+        - difficultyLevel: DifficultyLevel
+        - rating: BigDecimal
+        - reviewCount: Integer
+        - enrollmentCount: Integer
+        - language: String
+        - hasCertificate: Boolean
+        - isFree: Boolean
+        - lastUpdated: LocalDate
+        - fetchedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isPopular(): boolean
+        + isHighlyRated(): boolean
+        + calculateValue(): BigDecimal
+    }
+    
+    class CourseSkill <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - courseId: Long {FK}
+        - skillName: String
+        - isPrimary: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class SkillDependency <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - skillName: String
+        - prerequisiteSkill: String
+        - isRequired: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class LearningPath <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - userId: Long
+        - targetRole: String
+        - title: String
+        - description: String
+        - totalPhases: Integer
+        - totalCourses: Integer
+        - estimatedDurationHours: BigDecimal
+        - difficultyLevel: DifficultyLevel
+        - status: PathStatus
+        - createdAt: LocalDateTime
+        - startedAt: LocalDateTime
+        - completedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isCompleted(): boolean
+        + isInProgress(): boolean
+        + isNotStarted(): boolean
+        + startPath(): void
+        + completePath(): void
+        + abandonPath(): void
+    }
+    
+    class LearningPathMilestone <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - pathId: Long {FK}
+        - phaseNumber: Integer
+        - phaseName: String
+        - description: String
+        - estimatedDurationHours: BigDecimal
+        - primarySkill: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class LearningPathCourse <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - milestoneId: Long {FK}
+        - courseId: Long {FK}
+        - orderIndex: Integer
+        - isRequired: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class LearningProgress <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - userId: Long
+        - pathId: Long {FK}
+        - currentPhase: Integer
+        - completedPhases: Integer
+        - completedCourses: String {JSON}
+        - totalTimeSpentHours: BigDecimal
+        - lastActivityAt: LocalDateTime
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + addCompletedCourse(courseId: String): void
+        + getCompletedCoursesList(): List<String>
+        + calculateProgressPercentage(totalCourses: int): BigDecimal
+        + isActive(): boolean
+    }
+    
+    class CourseCompletionHistory <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - userId: Long
+        - pathId: Long {FK}
+        - courseId: Long {FK}
+        - courseSource: CourseSource
+        - courseTitle: String
+        - completedAt: LocalDateTime
+        - certificateUrl: String
+        - timeSpentHours: BigDecimal
+        --
+        + getters/setters()
+        + hasCertificate(): boolean
+    }
+    
+    class PhaseCompletionHistory <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - userId: Long
+        - pathId: Long {FK}
+        - phaseId: Long {FK}
+        - phaseNumber: Integer
+        - phaseName: String
+        - completedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class SkillGapAnalysis <<Entity>> ENTITY_COLOR {
+        - id: Long {PK}
+        - userId: Long
+        - targetRole: String
+        - currentSkills: String {JSON}
+        - requiredSkills: String {JSON}
+        - missingSkills: String {JSON}
+        - skillGapsCount: Integer
+        - prioritySkills: String {JSON}
+        - analyzedAt: LocalDateTime
+        --
+        + getters/setters()
+        + getCurrentSkillsList(): List<String>
+        + getRequiredSkillsList(): List<String>
+        + getMissingSkillsList(): List<String>
+        + getPrioritySkillsList(): List<String>
+        + calculateMatchPercentage(): BigDecimal
+    }
+    
+    enum CourseSource {
+        UDEMY
+        COURSERA
+        YOUTUBE
+        PLURALSIGHT
+        EDEX
+        OTHER
+    }
+    
+    enum DifficultyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+        ALL_LEVELS
+    }
+    
+    enum PathStatus {
+        NOT_STARTED
+        IN_PROGRESS
+        COMPLETED
+        ABANDONED
+    }
+}
+
+' Relationships
+Course "1" -- "0..*" CourseSkill : teaches
+LearningPath "1" -- "0..*" LearningPathMilestone : contains
+LearningPathMilestone "1" -- "0..*" LearningPathCourse : includes
+LearningPathCourse "*" -- "1" Course : references
+LearningPath "1" -- "0..1" LearningProgress : tracks
+LearningPath "1" -- "0..*" CourseCompletionHistory : logs
+LearningPath "1" -- "0..*" PhaseCompletionHistory : logs
+CourseCompletionHistory "*" -- "1" Course : references
+
+note top of Course
+  @Entity
+  @Table(name = "courses")
+  Stores course data from multiple sources
+  (Udemy, Coursera, YouTube, etc.)
+end note
+
+note top of LearningPath
+  @Entity
+  @Table(name = "learning_paths")
+  User's personalized learning journey
+  generated based on skill gaps
+end note
+
+note top of SkillDependency
+  @Entity
+  @Table(name = "skill_dependencies")
+  Defines prerequisite relationships
+  Example: Docker → Kubernetes
+end note
+
+@enduml

@@ -1,0 +1,141 @@
+@startuml Resume Service Class Diagram
+
+!define DTO_COLOR #E1BEE7
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.dto" <<Rectangle>> {
+    
+    class ResumeUploadRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - file: MultipartFile
+        --
+        + validate(): void
+        + getFileExtension(): String
+    }
+    
+    class ResumeUploadResponse <<DTO>> DTO_COLOR {
+        - resumeId: Long
+        - fileName: String
+        - fileUrl: String
+        - parseStatus: String
+        - message: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - userId: Long
+        - fileName: String
+        - fileUrl: String
+        - parseStatus: String
+        - qualityScore: Integer
+        - completenessScore: Integer
+        - personalInfo: ResumePersonalInfoDTO
+        - skills: List<ResumeSkillDTO>
+        - experiences: List<ResumeExperienceDTO>
+        - educations: List<ResumeEducationDTO>
+        - certifications: List<ResumeCertificationDTO>
+        - projects: List<ResumeProjectDTO>
+        - analysis: ResumeAnalysisDTO
+        - uploadedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class ResumePersonalInfoDTO <<DTO>> DTO_COLOR {
+        - fullName: String
+        - email: String
+        - phone: String
+        - location: String
+        - linkedinUrl: String
+        - githubUrl: String
+        - portfolioUrl: String
+        - summary: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeSkillDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - category: String
+        - proficiencyLevel: String
+        - yearsOfExperience: BigDecimal
+        - acquiredVia: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeExperienceDTO <<DTO>> DTO_COLOR {
+        - companyName: String
+        - jobTitle: String
+        - location: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - isCurrent: Boolean
+        - description: String
+        - technologiesUsed: List<String>
+        --
+        + getters/setters()
+    }
+    
+    class ResumeEducationDTO <<DTO>> DTO_COLOR {
+        - institutionName: String
+        - degree: String
+        - fieldOfStudy: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - grade: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeCertificationDTO <<DTO>> DTO_COLOR {
+        - certificationName: String
+        - issuingOrganization: String
+        - issueDate: LocalDate
+        - expiryDate: LocalDate
+        - credentialUrl: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeProjectDTO <<DTO>> DTO_COLOR {
+        - projectName: String
+        - description: String
+        - technologiesUsed: List<String>
+        - projectUrl: String
+        - githubUrl: String
+        --
+        + getters/setters()
+    }
+    
+    class ResumeAnalysisDTO <<DTO>> DTO_COLOR {
+        - overallScore: Integer
+        - completenessScore: Integer
+        - keywordOptimizationScore: Integer
+        - hasSummary: Boolean
+        - hasExperience: Boolean
+        - hasSkills: Boolean
+        - totalSkillsCount: Integer
+        - suggestions: List<String>
+        --
+        + getters/setters()
+    }
+    
+    class AddSkillRequest <<DTO>> DTO_COLOR {
+        - skillName: String
+        - proficiencyLevel: String
+        - yearsOfExperience: BigDecimal
+        - certificateUrl: String
+        --
+        + validate(): void
+    }
+}
+
+@enduml

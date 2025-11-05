@@ -1,0 +1,80 @@
+@startuml Notification Service - Repository Package
+
+!define REPOSITORY_COLOR #FFF9C4
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Notification Service - Repository Package
+
+package "com.careernexus.notificationservice.repository" {
+    
+    interface NotificationRepository <<JpaRepository>> REPOSITORY_COLOR{
+        + findByUserId(userId: Long): List<Notification>
+        + findByUserIdAndIsRead(userId: Long, isRead: Boolean): List<Notification>
+        + findRecentByUserId(userId: Long, limit: int): List<Notification>
+        + findByUserIdAndType(userId: Long, type: NotificationType): List<Notification>
+        + countUnreadByUserId(userId: Long): long
+        + markAllAsRead(userId: Long): void
+        + deleteOldNotifications(beforeDate: LocalDateTime): void
+        --
+        @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND n.isRead = false")
+        @Modifying
+        @Query("UPDATE Notification n SET n.isRead = true WHERE n.userId = :userId")
+    }
+    
+    interface NotificationDeliveryLogRepository <<JpaRepository>> REPOSITORY_COLOR{
+        + findByNotificationId(notificationId: Long): List<NotificationDeliveryLog>
+        + findByUserId(userId: Long): List<NotificationDeliveryLog>
+        + findByProviderMessageId(messageId: String): Optional<NotificationDeliveryLog>
+        + findByStatus(status: DeliveryStatus): List<NotificationDeliveryLog>
+        + countByUserIdAndChannel(userId: Long, channel: NotificationChannel): long
+        + findFailedDeliveries(beforeDate: LocalDateTime): List<NotificationDeliveryLog>
+        --
+        @Query("SELECT ndl FROM NotificationDeliveryLog ndl WHERE ndl.status = 'FAILED'")
+    }
+    
+    interface UserNotificationPreferencesRepository <<JpaRepository>> REPOSITORY_COLOR{
+        + findByUserId(userId: Long): Optional<UserNotificationPreferences>
+        + existsByUserId(userId: Long): boolean
+    }
+    
+    interface UserDeviceRepository <<JpaRepository>> REPOSITORY_COLOR{
+        + findByUserId(userId: Long): List<UserDevice>
+        + findByUserIdAndIsActive(userId: Long, isActive: Boolean): List<UserDevice>
+        + findByFcmToken(fcmToken: String): Optional<UserDevice>
+        + deactivateOldDevices(userId: Long, lastUsedBefore: LocalDateTime): void
+        --
+        @Modifying
+        @Query("UPDATE UserDevice ud SET ud.isActive = false WHERE ud.userId = :userId AND ud.lastUsedAt < :date")
+    }
+    
+    interface EmailTemplateRepository <<JpaRepository>> REPOSITORY_COLOR{
+        + findByTemplateName(name: String): Optional<EmailTemplate>
+        + findByIsActiveTrue(): List<EmailTemplate>
+        + existsByTemplateName(name: String): boolean
+    }
+}
+
+interface JpaRepository<T, ID> {
+    + save(entity: T): T
+    + findById(id: ID): Optional<T>
+    + findAll(): List<T>
+    + delete(entity: T): void
+}
+
+NotificationRepository --|> JpaRepository
+NotificationDeliveryLogRepository --|> JpaRepository
+UserNotificationPreferencesRepository --|> JpaRepository
+UserDeviceRepository --|> JpaRepository
+EmailTemplateRepository --|> JpaRepository
+
+note top of NotificationRepository
+  @Repository
+  Main repository for in-app notifications
+  Supports pagination and filtering
+end note
+
+@enduml

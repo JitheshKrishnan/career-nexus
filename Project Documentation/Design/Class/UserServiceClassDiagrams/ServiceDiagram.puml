@@ -1,6 +1,8 @@
-@startuml UserService_Services
+@startuml User Service - Service Package (Refactored with Abstract Factory)
 
 !define SERVICE_COLOR #F0F4C3
+!define INTERFACE_COLOR #E1F5FE
+!define FACTORY_COLOR #FFE0B2
 
 skinparam backgroundColor #FAFAFA
 skinparam classAttributeIconSize 0
@@ -8,6 +10,164 @@ skinparam shadowing false
 skinparam roundcorner 5
 skinparam packageStyle rectangle
 
+title User Service - Service Package with Abstract Factory Pattern
+
+' ============================================
+' TOKEN ABSTRACTION (from Entity Layer)
+' ============================================
+package "com.careernexus.userservice.model" <<Rectangle>> {
+    
+    interface Token <<Interface>> INTERFACE_COLOR {
+        + getToken(): String
+        + getExpiresAt(): LocalDateTime
+        + getUserId(): Long
+        + isExpired(): boolean
+        + markAsUsed(): void
+    }
+    
+    class EmailVerificationToken <<Entity>> INTERFACE_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - verifiedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + markAsVerified(): void
+    }
+    
+    class PasswordResetToken <<Entity>> INTERFACE_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - usedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isUsed(): boolean
+        + markAsUsed(): void
+    }
+    
+    class RefreshToken <<Entity>> INTERFACE_COLOR {
+        - id: Long
+        - userId: Long
+        - token: String
+        - expiresAt: LocalDateTime
+        - revoked: Boolean
+        - revokedAt: LocalDateTime
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isRevoked(): boolean
+        + revoke(): void
+    }
+    
+    EmailVerificationToken ..|> Token
+    PasswordResetToken ..|> Token
+    RefreshToken ..|> Token
+}
+
+' ============================================
+' REPOSITORY ABSTRACTION (from Repository Layer)
+' ============================================
+package "com.careernexus.userservice.repository" <<Rectangle>> {
+    
+    interface BaseTokenRepository<T extends Token> <<Repository>> INTERFACE_COLOR {
+        + findByToken(token: String): Optional<T>
+        + findByUserId(userId: Long): List<T>
+        + deleteByExpiresAtBefore(date: LocalDateTime): void
+        + save(token: T): T
+    }
+    
+    interface EmailVerificationTokenRepository <<Repository>> INTERFACE_COLOR {
+        + existsByUserIdAndVerifiedAtIsNull(userId: Long): boolean
+    }
+    
+    interface PasswordResetTokenRepository <<Repository>> INTERFACE_COLOR {
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface RefreshTokenRepository <<Repository>> INTERFACE_COLOR {
+        + revokeAllByUserId(userId: Long): void
+        + findByUserIdAndRevokedFalse(userId: Long): List<RefreshToken>
+    }
+    
+    EmailVerificationTokenRepository --|> BaseTokenRepository
+    PasswordResetTokenRepository --|> BaseTokenRepository
+    RefreshTokenRepository --|> BaseTokenRepository
+}
+
+' ============================================
+' ABSTRACT FACTORY PATTERN FOR TOKEN CREATION
+' ============================================
+package "com.careernexus.userservice.factory" <<Rectangle>> {
+    
+    interface TokenFactory <<Factory>> FACTORY_COLOR {
+        + createToken(userId: Long): Token
+        + getTokenType(): TokenType
+        + getExpirationDuration(): Duration
+    }
+    
+    class EmailVerificationTokenFactory <<ConcreteFactory>> FACTORY_COLOR {
+        - tokenGenerator: TokenGenerator
+        - expirationHours: int
+        --
+        + createToken(userId: Long): EmailVerificationToken
+        + getTokenType(): TokenType
+        + getExpirationDuration(): Duration
+        - generateSecureToken(): String
+    }
+    
+    class PasswordResetTokenFactory <<ConcreteFactory>> FACTORY_COLOR {
+        - tokenGenerator: TokenGenerator
+        - expirationHours: int
+        --
+        + createToken(userId: Long): PasswordResetToken
+        + getTokenType(): TokenType
+        + getExpirationDuration(): Duration
+        - generateSecureToken(): String
+    }
+    
+    class RefreshTokenFactory <<ConcreteFactory>> FACTORY_COLOR {
+        - tokenGenerator: TokenGenerator
+        - expirationDays: int
+        --
+        + createToken(userId: Long): RefreshToken
+        + getTokenType(): TokenType
+        + getExpirationDuration(): Duration
+        - generateSecureToken(): String
+    }
+    
+    class TokenFactoryProvider <<FactoryProvider>> FACTORY_COLOR {
+        - factories: Map<TokenType, TokenFactory>
+        --
+        + TokenFactoryProvider(factories: List<TokenFactory>)
+        + getFactory(tokenType: TokenType): TokenFactory
+        + registerFactory(factory: TokenFactory): void
+    }
+    
+    enum TokenType {
+        EMAIL_VERIFICATION
+        PASSWORD_RESET
+        REFRESH_TOKEN
+    }
+    
+    EmailVerificationTokenFactory ..|> TokenFactory
+    PasswordResetTokenFactory ..|> TokenFactory
+    RefreshTokenFactory ..|> TokenFactory
+    
+    TokenFactoryProvider --> TokenFactory : manages
+    TokenFactory --> TokenType : uses
+}
+
+' ============================================
+' SERVICE LAYER (REFACTORED)
+' ============================================
 package "com.careernexus.userservice.service" <<Rectangle>> {
     
     interface UserService <<Service>> SERVICE_COLOR {
@@ -24,18 +184,17 @@ package "com.careernexus.userservice.service" <<Rectangle>> {
     
     class UserServiceImpl <<ServiceImpl>> SERVICE_COLOR {
         - userRepository: UserRepository
-        - emailVerificationTokenRepository: EmailVerificationTokenRepository
+        - tokenService: TokenService
         - userPreferencesRepository: UserPreferencesRepository
         - passwordEncoder: PasswordEncoder
         - emailService: EmailService
-        - tokenService: TokenService
+        - userMapper: UserMapper
         --
         + registerUser(request: UserRegistrationRequest): UserRegistrationResponse
         + getUserById(userId: Long): UserDTO
         + updateUser(userId: Long, request: UserUpdateRequest): UserDTO
         + verifyEmail(token: String): EmailVerificationResponse
         - createDefaultPreferences(userId: Long): void
-        - generateVerificationToken(userId: Long): String
         - validateRegistrationRequest(request: UserRegistrationRequest): void
     }
     
@@ -49,7 +208,7 @@ package "com.careernexus.userservice.service" <<Rectangle>> {
     
     class AuthServiceImpl <<ServiceImpl>> SERVICE_COLOR {
         - userRepository: UserRepository
-        - refreshTokenRepository: RefreshTokenRepository
+        - tokenService: TokenService
         - jwtBlacklistRepository: JwtBlacklistRepository
         - passwordEncoder: PasswordEncoder
         - jwtUtil: JwtUtil
@@ -59,7 +218,6 @@ package "com.careernexus.userservice.service" <<Rectangle>> {
         + refreshToken(request: TokenRefreshRequest): TokenRefreshResponse
         + validateToken(token: String): boolean
         - generateAccessToken(user: User): String
-        - generateRefreshToken(user: User): RefreshToken
         - blacklistToken(token: String, userId: Long): void
     }
     
@@ -71,32 +229,41 @@ package "com.careernexus.userservice.service" <<Rectangle>> {
     
     class PasswordResetServiceImpl <<ServiceImpl>> SERVICE_COLOR {
         - userRepository: UserRepository
-        - passwordResetTokenRepository: PasswordResetTokenRepository
+        - tokenService: TokenService
         - passwordEncoder: PasswordEncoder
         - emailService: EmailService
         --
         + requestPasswordReset(request: PasswordResetRequest): void
         + resetPassword(request: PasswordResetConfirmRequest): void
-        - generateResetToken(userId: Long): String
         - sendResetEmail(email: String, token: String): void
     }
     
     interface TokenService <<Service>> SERVICE_COLOR {
-        + generateEmailVerificationToken(userId: Long): String
-        + validateEmailVerificationToken(token: String): boolean
-        + generatePasswordResetToken(userId: Long): String
-        + validatePasswordResetToken(token: String): boolean
+        + createToken(userId: Long, tokenType: TokenType): Token
+        + validateToken(token: String, tokenType: TokenType): boolean
+        + getTokenByValue(token: String, tokenType: TokenType): Optional<Token>
+        + invalidateToken(token: String, tokenType: TokenType): void
         + cleanupExpiredTokens(): void
     }
     
     class TokenServiceImpl <<ServiceImpl>> SERVICE_COLOR {
-        - emailVerificationTokenRepository: EmailVerificationTokenRepository
-        - passwordResetTokenRepository: PasswordResetTokenRepository
+        - tokenFactoryProvider: TokenFactoryProvider
+        - repositoryProvider: TokenRepositoryProvider
         --
-        + generateEmailVerificationToken(userId: Long): String
-        + validateEmailVerificationToken(token: String): boolean
+        + createToken(userId: Long, tokenType: TokenType): Token
+        + validateToken(token: String, tokenType: TokenType): boolean
+        + getTokenByValue(token: String, tokenType: TokenType): Optional<Token>
+        + invalidateToken(token: String, tokenType: TokenType): void
         + cleanupExpiredTokens(): void
-        - generateSecureToken(): String
+        - saveToken(token: Token, tokenType: TokenType): Token
+        - getRepository(tokenType: TokenType): BaseTokenRepository<?>
+    }
+    
+    class TokenRepositoryProvider <<Provider>> SERVICE_COLOR {
+        - repositories: Map<TokenType, BaseTokenRepository<?>>
+        --
+        + TokenRepositoryProvider(emailRepo, passwordRepo, refreshRepo)
+        + getRepository(tokenType: TokenType): BaseTokenRepository<?>
     }
     
     interface EmailService <<Service>> SERVICE_COLOR {
@@ -115,6 +282,10 @@ package "com.careernexus.userservice.service" <<Rectangle>> {
     }
 }
 
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
 ' Service implementations
 UserServiceImpl ..|> UserService
 AuthServiceImpl ..|> AuthService
@@ -124,30 +295,107 @@ EmailServiceImpl ..|> EmailService
 
 ' Service dependencies
 UserServiceImpl --> UserRepository : uses
-UserServiceImpl --> EmailVerificationTokenRepository : uses
+UserServiceImpl --> TokenService : uses
 UserServiceImpl --> UserPreferencesRepository : uses
 UserServiceImpl --> EmailService : uses
-UserServiceImpl --> TokenService : uses
 UserServiceImpl --> UserMapper : uses
 
 AuthServiceImpl --> UserRepository : uses
-AuthServiceImpl --> RefreshTokenRepository : uses
+AuthServiceImpl --> TokenService : uses
 AuthServiceImpl --> JwtBlacklistRepository : uses
 AuthServiceImpl --> JwtUtil : uses
 
 PasswordResetServiceImpl --> UserRepository : uses
-PasswordResetServiceImpl --> PasswordResetTokenRepository : uses
+PasswordResetServiceImpl --> TokenService : uses
 PasswordResetServiceImpl --> EmailService : uses
 
-TokenServiceImpl --> EmailVerificationTokenRepository : uses
-TokenServiceImpl --> PasswordResetTokenRepository : uses
-TokenServiceImpl --> TokenGenerator : uses
+TokenServiceImpl --> TokenFactoryProvider : uses
+TokenServiceImpl --> TokenRepositoryProvider : uses
+TokenServiceImpl --> TokenType : uses
+
+TokenRepositoryProvider --> BaseTokenRepository : manages
+TokenRepositoryProvider --> EmailVerificationTokenRepository : uses
+TokenRepositoryProvider --> PasswordResetTokenRepository : uses
+TokenRepositoryProvider --> RefreshTokenRepository : uses
 
 EmailServiceImpl --> NotificationServiceClient : uses
 
-note right of UserService
-  Main service interface for
-  user-related operations
+' Factory relationships
+TokenFactoryProvider --> EmailVerificationTokenFactory : creates
+TokenFactoryProvider --> PasswordResetTokenFactory : creates
+TokenFactoryProvider --> RefreshTokenFactory : creates
+
+EmailVerificationTokenFactory ..> EmailVerificationToken : creates
+PasswordResetTokenFactory ..> PasswordResetToken : creates
+RefreshTokenFactory ..> RefreshToken : creates
+
+' ============================================
+' NOTES
+' ============================================
+
+note top of TokenFactory
+  **Abstract Factory Pattern**
+  
+  Each factory creates a specific
+  type of token with appropriate
+  expiration and security settings
+  
+  Benefits:
+  - Centralized token creation logic
+  - Easy to add new token types
+  - Type-safe token handling
+end note
+
+note top of TokenService
+  **Refactored Token Service**
+  
+  Uses Factory Pattern for token creation
+  Uses Repository Provider for data access
+  
+  Example:
+  Token token = tokenService.createToken(
+      userId, 
+      TokenType.EMAIL_VERIFICATION
+  );
+end note
+
+note right of TokenServiceImpl
+  **Implementation Flow:**
+  
+  1. Get factory from TokenFactoryProvider
+  2. Create token using factory
+  3. Get repository from TokenRepositoryProvider
+  4. Save token to database
+  5. Return created token
+  
+  **Validation Flow:**
+  1. Get repository by token type
+  2. Find token by value
+  3. Check if expired
+  4. Return validation result
+end note
+
+note top of TokenRepositoryProvider
+  **Repository Provider Pattern**
+  
+  Maps TokenType to appropriate repository
+  Eliminates need for multiple repository
+  dependencies in TokenService
+  
+  Example:
+  BaseTokenRepository<?> repo = 
+      provider.getRepository(TokenType.EMAIL_VERIFICATION);
+end note
+
+note bottom of UserServiceImpl
+  **Simplified User Service**
+  
+  Now delegates all token operations
+  to TokenService instead of managing
+  multiple token repositories
+  
+  Before: 3 repository dependencies
+  After: 1 service dependency
 end note
 
 @enduml

@@ -1,0 +1,134 @@
+@startuml Learning Service - Controller Package
+
+!define CONTROLLER_COLOR  #FFE0B2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Learning Service - Controller Package (API Layer)
+
+package "com.careernexus.learningservice.controller" {
+    
+    class CourseController <<RestController>> CONTROLLER_COLOR {
+        - courseService: CourseService
+        --
+        **Course Retrieval**
+        + getCourse(courseId: Long): ResponseEntity<CourseDTO>
+        + searchCourses(request: CourseSearchRequest): ResponseEntity<List<CourseDTO>>
+        + getCoursesForSkill(skillName: String): ResponseEntity<List<CourseDTO>>
+        + getTopRatedCourses(limit: Integer): ResponseEntity<List<CourseDTO>>
+        + getFreeCourses(): ResponseEntity<List<CourseDTO>>
+        --
+        @GetMapping("/courses/{id}")
+        @PostMapping("/courses/search")
+        @GetMapping("/courses/skill/{skillName}")
+        @GetMapping("/courses/top-rated")
+        @GetMapping("/courses/free")
+    }
+    
+    class SkillGapController <<RestController>> CONTROLLER_COLOR {
+        - skillGapAnalysisService: SkillGapAnalysisService
+        --
+        **Skill Gap Analysis**
+        + analyzeSkillGaps(request: SkillGapAnalysisRequest): ResponseEntity<SkillGapAnalysisResponse>
+        + getLatestAnalysis(userId: Long): ResponseEntity<SkillGapAnalysisResponse>
+        + getUserAnalysisHistory(userId: Long): ResponseEntity<List<SkillGapAnalysisResponse>>
+        --
+        @PostMapping("/skill-gaps/analyze")
+        @GetMapping("/skill-gaps/user/{userId}/latest")
+        @GetMapping("/skill-gaps/user/{userId}/history")
+    }
+    
+    class CourseRecommendationController <<RestController>> CONTROLLER_COLOR {
+        - recommendationService: CourseRecommendationService
+        --
+        **Course Recommendations**
+        + recommendCourses(request: CourseRecommendationRequest): ResponseEntity<CourseRecommendationResponse>
+        + getPersonalizedRecommendations(userId: Long): ResponseEntity<List<CourseDTO>>
+        + recommendForSkill(skillName: String, filters: Map): ResponseEntity<List<CourseDTO>>
+        --
+        @PostMapping("/recommendations/courses")
+        @GetMapping("/recommendations/user/{userId}")
+        @GetMapping("/recommendations/skill/{skillName}")
+    }
+    
+    class LearningPathController <<RestController>> CONTROLLER_COLOR {
+        - learningPathService: LearningPathService
+        --
+        **Learning Path Management**
+        + generateLearningPath(request: LearningPathRequest): ResponseEntity<LearningPathResponse>
+        + getLearningPath(pathId: Long): ResponseEntity<LearningPathResponse>
+        + getUserPaths(userId: Long): ResponseEntity<List<LearningPathResponse>>
+        + startPath(pathId: Long): ResponseEntity<Void>
+        + deletePath(pathId: Long): ResponseEntity<Void>
+        --
+        @PostMapping("/learning-paths/generate")
+        @GetMapping("/learning-paths/{pathId}")
+        @GetMapping("/learning-paths/user/{userId}")
+        @PostMapping("/learning-paths/{pathId}/start")
+        @DeleteMapping("/learning-paths/{pathId}")
+    }
+    
+    class LearningProgressController <<RestController>> CONTROLLER_COLOR {
+        - progressService: LearningProgressService
+        --
+        **Progress Tracking**
+        + getProgress(userId: Long, pathId: Long): ResponseEntity<LearningProgressDTO>
+        + completeCourse(userId: Long, pathId: Long, request: CompleteCourseRequest): ResponseEntity<CompleteCourseResponse>
+        + getUserOverallProgress(userId: Long): ResponseEntity<Map<String, Object>>
+        + updateProgress(userId: Long, pathId: Long): ResponseEntity<Void>
+        --
+        @GetMapping("/progress/user/{userId}/path/{pathId}")
+        @PostMapping("/progress/user/{userId}/path/{pathId}/complete-course")
+        @GetMapping("/progress/user/{userId}/overall")
+        @PutMapping("/progress/user/{userId}/path/{pathId}")
+    }
+}
+
+' Controller dependencies
+CourseController --> CourseService : uses
+SkillGapController --> SkillGapAnalysisService : uses
+CourseRecommendationController --> CourseRecommendationService : uses
+LearningPathController --> LearningPathService : uses
+LearningProgressController --> LearningProgressService : uses
+
+note top of CourseController
+  @RestController
+  @RequestMapping("/api/learning")
+  @Tag(name = "Courses")
+  
+  Handles course-related operations
+  All endpoints return ResponseEntity
+end note
+
+note top of SkillGapController
+  @RestController
+  @RequestMapping("/api/learning")
+  @Tag(name = "Skill Gap Analysis")
+  
+  Analyzes user skill gaps
+  against target roles/jobs
+end note
+
+note top of LearningPathController
+  @RestController
+  @RequestMapping("/api/learning")
+  @Tag(name = "Learning Paths")
+  
+  Manages personalized learning paths
+  Generated based on skill gaps
+end note
+
+note bottom of LearningProgressController
+  @RestController
+  @RequestMapping("/api/learning")
+  @Tag(name = "Learning Progress")
+  
+  Tracks user progress through paths
+  Handles course completions
+  Integrates with Resume Service
+end note
+
+@enduml

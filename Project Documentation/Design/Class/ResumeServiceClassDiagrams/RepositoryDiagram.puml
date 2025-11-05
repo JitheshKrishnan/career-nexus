@@ -1,0 +1,91 @@
+@startuml Resume Service Class Diagram
+
+!define REPOSITORY_COLOR #FFF9C4
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.repository" <<Rectangle>> {
+    
+    interface ResumeRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<Resume>
+        + findByUserIdAndParseStatus(userId: Long, status: ParseStatus): List<Resume>
+        + findLatestByUserId(userId: Long): Optional<Resume>
+        + findByParseStatus(status: ParseStatus): List<Resume>
+        + countByUserId(userId: Long): long
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface ResumePersonalInfoRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): Optional<ResumePersonalInfo>
+        + existsByResumeId(resumeId: Long): boolean
+    }
+    
+    interface ResumeSkillRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeSkill>
+        + findByResumeIdAndSkillCategory(resumeId: Long, category: SkillCategory): List<ResumeSkill>
+        + findBySkillName(skillName: String): List<ResumeSkill>
+        + countByResumeId(resumeId: Long): long
+        + existsByResumeIdAndSkillName(resumeId: Long, skillName: String): boolean
+        + deleteByResumeId(resumeId: Long): void
+    }
+    
+    interface ResumeExperienceRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeExperience>
+        + findByResumeIdOrderByStartDateDesc(resumeId: Long): List<ResumeExperience>
+        + countByResumeId(resumeId: Long): long
+        + deleteByResumeId(resumeId: Long): void
+    }
+    
+    interface ResumeEducationRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeEducation>
+        + findByResumeIdOrderByEndDateDesc(resumeId: Long): List<ResumeEducation>
+        + countByResumeId(resumeId: Long): long
+    }
+    
+    interface ResumeCertificationRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeCertification>
+        + findByResumeIdAndSource(resumeId: Long, source: CertificationSource): List<ResumeCertification>
+        + findExpiredCertifications(resumeId: Long, currentDate: LocalDate): List<ResumeCertification>
+        + countByResumeId(resumeId: Long): long
+    }
+    
+    interface ResumeProjectRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): List<ResumeProject>
+        + countByResumeId(resumeId: Long): long
+    }
+    
+    interface ResumeAnalysisRepository <<Repository>> REPOSITORY_COLOR {
+        + findByResumeId(resumeId: Long): Optional<ResumeAnalysis>
+        + existsByResumeId(resumeId: Long): boolean
+    }
+}
+
+' Repository extends JpaRepository
+ResumeRepository --|> JpaRepository
+ResumePersonalInfoRepository --|> JpaRepository
+ResumeSkillRepository --|> JpaRepository
+ResumeExperienceRepository --|> JpaRepository
+ResumeEducationRepository --|> JpaRepository
+ResumeCertificationRepository --|> JpaRepository
+ResumeProjectRepository --|> JpaRepository
+ResumeAnalysisRepository --|> JpaRepository
+
+' Service dependencies
+ResumeServiceImpl --> ResumeRepository
+
+ResumeParserServiceImpl --> ResumePersonalInfoRepository
+ResumeParserServiceImpl --> ResumeSkillRepository
+ResumeParserServiceImpl --> ResumeExperienceRepository
+
+ResumeAnalysisServiceImpl --> ResumeRepository
+ResumeAnalysisServiceImpl --> ResumeAnalysisRepository
+ResumeAnalysisServiceImpl --> ResumeSkillRepository
+
+SkillServiceImpl --> ResumeSkillRepository
+SkillServiceImpl --> ResumeRepository
+
+@enduml

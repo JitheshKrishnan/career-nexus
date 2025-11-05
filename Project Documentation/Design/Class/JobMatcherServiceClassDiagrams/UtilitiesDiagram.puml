@@ -1,0 +1,49 @@
+@startuml Job Matcher Service Class Diagram
+
+!define UTIL_COLOR #C8E6C9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.util" <<Rectangle>> {
+    
+    class JobMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(job: Job): JobDTO
+        + toEntity(dto: JobDTO): Job
+        + toMatchDTO(match: JobMatch, job: Job): JobMatchDTO
+    }
+    
+    class MatchScoreCalculator <<Utility>> UTIL_COLOR {
+        + calculateSkillMatch(userSkills: List<String>, jobSkills: List<JobSkill>): BigDecimal
+        + calculateExperienceMatch(userExp: int, jobExp: String): BigDecimal
+        + calculateLocationMatch(userLoc: String, jobLoc: String): BigDecimal
+        + calculateOverallScore(skillScore: BigDecimal, expScore: BigDecimal, locScore: BigDecimal): BigDecimal
+        - calculateWeightedScore(scores: Map<String, BigDecimal>): BigDecimal
+    }
+    
+    class SkillExtractor <<Utility>> UTIL_COLOR {
+        + extractSkillsFromText(text: String): List<String>
+        + normalizeSkillName(skill: String): String
+        + isValidSkill(skill: String): boolean
+    }
+    
+    class SearchQueryBuilder <<Utility>> UTIL_COLOR {
+        + buildElasticsearchQuery(request: JobSearchRequest): String
+        + buildSQLQuery(request: JobSearchRequest): String
+        + applyFilters(query: String, filters: Map<String, Object>): String
+    }
+}
+
+JobMatchingServiceImpl --> MatchScoreCalculator
+
+note right of MatchScoreCalculator
+  Weighted scoring algorithm:
+  - Skills: 60%
+  - Experience: 25%
+  - Location: 15%
+end note
+
+@enduml

@@ -1,0 +1,205 @@
+@startuml Notification Service - Service Package
+
+!define SERVICE_COLOR #F0F4C3
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Notification Service - Service Package (Business Logic Layer)
+
+package "com.careernexus.notificationservice.service" {
+    
+    interface NotificationService <<Service>> SERVICE_COLOR{
+        + sendNotification(request: SendNotificationRequest): SendNotificationResponse
+        + getUserNotifications(userId: Long): List<NotificationDTO>
+        + getUnreadNotifications(userId: Long): List<NotificationDTO>
+        + markAsRead(notificationId: Long): void
+        + markAllAsRead(userId: Long): void
+        + deleteNotification(notificationId: Long): void
+        + getUnreadCount(userId: Long): long
+    }
+    
+    class NotificationServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - notificationRepository: NotificationRepository
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        - preferencesRepository: UserNotificationPreferencesRepository
+        - emailService: EmailService
+        - pushNotificationService: PushNotificationService
+        - notificationQueueProducer: NotificationQueueProducer
+        --
+        + sendNotification(request: SendNotificationRequest): SendNotificationResponse
+        + getUserNotifications(userId: Long): List<NotificationDTO>
+        - checkUserPreferences(userId: Long, type: NotificationType): UserNotificationPreferences
+        - queueNotification(notification: Notification, channels: List): void
+        - createInAppNotification(request: SendNotificationRequest): Notification
+        - routeToChannels(notification: Notification, channels: List): Map<String, Boolean>
+    }
+    
+    interface EmailService <<Service>> SERVICE_COLOR{
+        + sendEmail(request: EmailRequest): String
+        + sendTemplatedEmail(templateName: String, to: String, data: Map): String
+        + sendBulkEmail(requests: List<EmailRequest>): Map<String, String>
+    }
+    
+    class EmailServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - emailTemplateRepository: EmailTemplateRepository
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        - sendGridClient: SendGridClient
+        - templateEngine: TemplateEngine
+        --
+        + sendEmail(request: EmailRequest): String
+        + sendTemplatedEmail(templateName: String, to: String, data: Map): String
+        - renderTemplate(template: EmailTemplate, data: Map): EmailContent
+        - logDelivery(userId: Long, messageId: String, status: DeliveryStatus): void
+        - buildSendGridRequest(request: EmailRequest): Mail
+    }
+    
+    interface PushNotificationService <<Service>> SERVICE_COLOR{
+        + sendPushNotification(request: PushNotificationRequest): Map<String, String>
+        + sendToDevice(deviceToken: String, title: String, body: String, data: Map): String
+        + sendToMultipleDevices(tokens: List<String>, title: String, body: String): Map<String, String>
+    }
+    
+    class PushNotificationServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - userDeviceRepository: UserDeviceRepository
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        - fcmClient: FirebaseCloudMessaging
+        --
+        + sendPushNotification(request: PushNotificationRequest): Map<String, String>
+        + sendToDevice(deviceToken: String, title: String, body: String, data: Map): String
+        - getUserDevices(userId: Long): List<UserDevice>
+        - buildFCMMessage(title: String, body: String, data: Map): Message
+        - logDelivery(userId: Long, token: String, messageId: String, status: DeliveryStatus): void
+        - handleFailedDevice(deviceId: Long): void
+    }
+    
+    interface NotificationPreferencesService <<Service>> SERVICE_COLOR{
+        + getUserPreferences(userId: Long): NotificationPreferencesDTO
+        + updatePreferences(userId: Long, preferences: NotificationPreferencesDTO): void
+        + createDefaultPreferences(userId: Long): void
+    }
+    
+    class NotificationPreferencesServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - preferencesRepository: UserNotificationPreferencesRepository
+        - preferencesMapper: PreferencesMapper
+        --
+        + getUserPreferences(userId: Long): NotificationPreferencesDTO
+        + updatePreferences(userId: Long, preferences: NotificationPreferencesDTO): void
+        + createDefaultPreferences(userId: Long): void
+    }
+    
+    interface DeviceService <<Service>> SERVICE_COLOR{
+        + registerDevice(request: RegisterDeviceRequest): void
+        + getUserDevices(userId: Long): List<UserDevice>
+        + deactivateDevice(deviceId: Long): void
+        + updateDeviceToken(deviceId: Long, newToken: String): void
+    }
+    
+    class DeviceServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - userDeviceRepository: UserDeviceRepository
+        --
+        + registerDevice(request: RegisterDeviceRequest): void
+        + getUserDevices(userId: Long): List<UserDevice>
+        - findExistingDevice(userId: Long, fcmToken: String): Optional<UserDevice>
+        - deactivateOldDevices(userId: Long): void
+    }
+    
+    interface WebhookService <<Service>> SERVICE_COLOR{
+        + processSendGridWebhook(event: WebhookEventDTO): void
+        + processFCMWebhook(event: WebhookEventDTO): void
+        + updateDeliveryStatus(messageId: String, status: DeliveryStatus): void
+    }
+    
+    class WebhookServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        --
+        + processSendGridWebhook(event: WebhookEventDTO): void
+        + processFCMWebhook(event: WebhookEventDTO): void
+        - handleEmailOpened(event: WebhookEventDTO): void
+        - handleEmailClicked(event: WebhookEventDTO): void
+        - handleEmailBounced(event: WebhookEventDTO): void
+        - handleEmailDelivered(event: WebhookEventDTO): void
+    }
+    
+    interface TemplateService <<Service>> SERVICE_COLOR{
+        + getTemplate(templateName: String): EmailTemplate
+        + createTemplate(template: EmailTemplate): void
+        + updateTemplate(templateName: String, template: EmailTemplate): void
+        + deleteTemplate(templateName: String): void
+        + getAllTemplates(): List<EmailTemplate>
+    }
+    
+    class TemplateServiceImpl <<ServiceImpl>> SERVICE_COLOR{
+        - emailTemplateRepository: EmailTemplateRepository
+        --
+        + getTemplate(templateName: String): EmailTemplate
+        + createTemplate(template: EmailTemplate): void
+        - validateTemplate(template: EmailTemplate): void
+        - checkVariables(template: String): List<String>
+    }
+}
+
+' Service implementations
+NotificationServiceImpl ..|> NotificationService
+EmailServiceImpl ..|> EmailService
+PushNotificationServiceImpl ..|> PushNotificationService
+NotificationPreferencesServiceImpl ..|> NotificationPreferencesService
+DeviceServiceImpl ..|> DeviceService
+WebhookServiceImpl ..|> WebhookService
+TemplateServiceImpl ..|> TemplateService
+
+' Service dependencies
+NotificationServiceImpl --> EmailService : uses
+NotificationServiceImpl --> PushNotificationService : uses
+NotificationServiceImpl --> NotificationPreferencesService : uses
+EmailServiceImpl --> TemplateService : uses
+PushNotificationServiceImpl --> DeviceService : uses
+
+note top of NotificationService
+  @Service
+  Orchestrates notifications
+  across multiple channels
+  
+  Flow:
+  1. Check user preferences
+  2. Queue to appropriate channels
+  3. Track delivery status
+end note
+
+note top of EmailService
+  @Service
+  Handles email delivery
+  via SendGrid API
+  
+  Supports:
+  - Template rendering
+  - Bulk sending
+  - Delivery tracking
+end note
+
+note top of PushNotificationService
+  @Service
+  Handles push notifications
+  via Firebase Cloud Messaging
+  
+  Features:
+  - Multi-device support
+  - Failed device handling
+  - Topic subscriptions
+end note
+
+note bottom of WebhookService
+  @Service
+  Processes delivery webhooks
+  from SendGrid and FCM
+  
+  Tracks:
+  - Opened
+  - Clicked
+  - Bounced
+  - Delivered
+end note
+
+@enduml

@@ -1,0 +1,98 @@
+@startuml Job Matcher Service Class Diagram
+
+!define REPOSITORY_COLOR #FFF9C4
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.repository" <<Rectangle>> {
+    
+    interface JobRepository <<Repository>> REPOSITORY_COLOR {
+        + findByExternalJobId(externalJobId: String): Optional<Job>
+        + findBySource(source: JobSource): List<Job>
+        + findByIsActiveTrue(): List<Job>
+        + findByLocationContaining(location: String): List<Job>
+        + findByJobType(jobType: JobType): List<Job>
+        + searchJobs(query: String): List<Job>
+        + findRecentJobs(days: int): List<Job>
+        + deactivateExpiredJobs(): void
+        + countByIsActiveTrue(): long
+    }
+    
+    interface JobSkillRepository <<Repository>> REPOSITORY_COLOR {
+        + findByJobId(jobId: Long): List<JobSkill>
+        + findBySkillName(skillName: String): List<JobSkill>
+        + findRequiredSkillsByJobId(jobId: Long): List<JobSkill>
+        + countByJobId(jobId: Long): long
+    }
+    
+    interface JobMatchRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<JobMatch>
+        + findByUserIdAndJobId(userId: Long, jobId: Long): Optional<JobMatch>
+        + findTopMatchesByUserId(userId: Long, limit: int): List<JobMatch>
+        + findByUserIdAndMatchScoreGreaterThan(userId: Long, score: BigDecimal): List<JobMatch>
+        + findByUserIdAndViewed(userId: Long, viewed: Boolean): List<JobMatch>
+        + countByUserId(userId: Long): long
+        + deleteByUserId(userId: Long): void
+    }
+    
+    interface UserJobSearchRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<UserJobSearch>
+        + findRecentSearches(userId: Long, limit: int): List<UserJobSearch>
+        + findPopularSearchQueries(limit: int): List<String>
+        + countByUserId(userId: Long): long
+    }
+    
+    interface SavedJobRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<SavedJob>
+        + findByUserIdAndJobId(userId: Long, jobId: Long): Optional<SavedJob>
+        + existsByUserIdAndJobId(userId: Long, jobId: Long): boolean
+        + deleteByUserIdAndJobId(userId: Long, jobId: Long): void
+        + countByUserId(userId: Long): long
+    }
+    
+    interface JobClickHistoryRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<JobClickHistory>
+        + findByJobId(jobId: Long): List<JobClickHistory>
+        + countClicksByJobId(jobId: Long): long
+        + findPopularJobs(limit: int): List<Object[]>
+    }
+    
+    interface JobAlertRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<JobAlert>
+        + findActiveAlerts(): List<JobAlert>
+        + findAlertsToSend(currentTime: LocalDateTime): List<JobAlert>
+    }
+}
+
+JobServiceImpl --> JobRepository
+JobServiceImpl --> JobSkillRepository
+JobServiceImpl --> UserJobSearchRepository
+
+JobScraperServiceImpl --> JobRepository
+JobScraperServiceImpl --> JobSkillRepository
+
+JobMatchingServiceImpl --> JobRepository
+JobMatchingServiceImpl --> JobMatchRepository
+
+SavedJobServiceImpl --> SavedJobRepository
+SavedJobServiceImpl --> JobRepository
+
+JobTrackingServiceImpl --> JobRepository
+JobTrackingServiceImpl --> JobMatchRepository
+JobTrackingServiceImpl --> JobClickHistoryRepository
+
+JobAlertServiceImpl --> JobAlertRepository
+
+JobRepository --|> JpaRepository
+JobSkillRepository --|> JpaRepository
+JobMatchRepository --|> JpaRepository
+UserJobSearchRepository --|> JpaRepository
+SavedJobRepository --|> JpaRepository
+JobClickHistoryRepository --|> JpaRepository
+JobAlertRepository --|> JpaRepository
+
+@enduml

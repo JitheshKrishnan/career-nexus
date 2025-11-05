@@ -1,0 +1,28 @@
+@startuml Resume Service Class Diagram
+
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.config" <<Rectangle>> {
+    
+    class StorageConfig <<Configuration>> CONFIG_COLOR {
+        + storageService(): StorageService
+        + cloudinary(): Cloudinary
+        + amazonS3(): AmazonS3
+    }
+    
+    class TikaConfig <<Configuration>> CONFIG_COLOR {
+        + tikaParser(): TikaParser
+    }
+    
+    class AsyncConfig <<Configuration>> CONFIG_COLOR {
+        + taskExecutor(): Executor
+    }
+}
+
+@enduml

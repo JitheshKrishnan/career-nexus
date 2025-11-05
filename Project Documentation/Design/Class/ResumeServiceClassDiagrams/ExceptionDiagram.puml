@@ -1,0 +1,37 @@
+@startuml Resume Service Class Diagram
+
+!define EXCEPTION_COLOR #FFCDD2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.exception" <<Rectangle>> {
+    
+    class ResumeNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + ResumeNotFoundException(resumeId: Long)
+    }
+    
+    class InvalidFileException <<Exception>> EXCEPTION_COLOR {
+        + InvalidFileException(message: String)
+    }
+    
+    class ResumeParseException <<Exception>> EXCEPTION_COLOR {
+        + ResumeParseException(message: String, cause: Throwable)
+    }
+    
+    class StorageException <<Exception>> EXCEPTION_COLOR {
+        + StorageException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleResumeNotFoundException(ex: ResumeNotFoundException): ResponseEntity<ErrorResponse>
+        + handleInvalidFileException(ex: InvalidFileException): ResponseEntity<ErrorResponse>
+        + handleResumeParseException(ex: ResumeParseException): ResponseEntity<ErrorResponse>
+        + handleStorageException(ex: StorageException): ResponseEntity<ErrorResponse>
+    }
+}
+
+@enduml

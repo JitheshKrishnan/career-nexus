@@ -1,0 +1,195 @@
+@startuml Learning Service - Service Package
+
+!define SERVICE_COLOR #F0F4C3
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Learning Service - Service Package (Business Logic Layer)
+
+package "com.careernexus.learningservice.service" {
+    
+    interface CourseService <<Service>> SERVICE_COLOR {
+        + getCourseById(courseId: Long): CourseDTO
+        + searchCourses(request: CourseSearchRequest): List<CourseDTO>
+        + getCoursesForSkill(skillName: String): List<CourseDTO>
+        + getTopRatedCourses(limit: int): List<CourseDTO>
+        + getFreeCourses(): List<CourseDTO>
+        + getCoursesBySource(source: CourseSource): List<CourseDTO>
+    }
+    
+    class CourseServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - courseRepository: CourseRepository
+        - courseSkillRepository: CourseSkillRepository
+        - courseMapper: CourseMapper
+        - cacheManager: CacheManager
+        --
+        + getCourseById(courseId: Long): CourseDTO
+        + searchCourses(request: CourseSearchRequest): List<CourseDTO>
+        - buildSearchCriteria(request: CourseSearchRequest): Specification
+        - enrichWithSkills(courses: List<Course>): List<CourseDTO>
+    }
+    
+    interface CourseScraperService <<Service>> SERVICE_COLOR {
+        + scrapeCourses(source: CourseSource): List<Course>
+        + scrapeUdemyCourses(skillName: String): List<Course>
+        + scrapeYouTubeCourses(skillName: String): List<Course>
+        + parseCourseData(html: String): Course
+        + updateCourseRatings(): void
+    }
+    
+    class CourseScraperServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - courseRepository: CourseRepository
+        - courseSkillRepository: CourseSkillRepository
+        - restTemplate: RestTemplate
+        - objectMapper: ObjectMapper
+        --
+        + scrapeCourses(source: CourseSource): List<Course>
+        + scrapeUdemyCourses(skillName: String): List<Course>
+        - extractSkillsFromDescription(description: String): List<String>
+        - saveOrUpdateCourse(course: Course): Course
+    }
+    
+    interface SkillGapAnalysisService <<Service>> SERVICE_COLOR {
+        + analyzeSkillGaps(request: SkillGapAnalysisRequest): SkillGapAnalysisResponse
+        + getLatestAnalysis(userId: Long): SkillGapAnalysisResponse
+        + identifyMissingSkills(userSkills: List<String>, requiredSkills: List<String>): List<String>
+        + prioritizeSkills(missingSkills: List<String>): List<SkillGapDTO>
+    }
+    
+    class SkillGapAnalysisServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - analysisRepository: SkillGapAnalysisRepository
+        - skillDependencyRepository: SkillDependencyRepository
+        - resumeServiceClient: ResumeServiceClient
+        - jobMatcherServiceClient: JobMatcherServiceClient
+        - courseService: CourseService
+        --
+        + analyzeSkillGaps(request: SkillGapAnalysisRequest): SkillGapAnalysisResponse
+        - getUserSkills(userId: Long): List<String>
+        - getRequiredSkills(targetRole: String, jobId: Long): List<String>
+        - resolveSkillDependencies(skill: String): List<String>
+        - prioritizeByDependencies(skills: List<String>): List<String>
+        - calculateMatchPercentage(current: List, required: List): BigDecimal
+    }
+    
+    interface CourseRecommendationService <<Service>> SERVICE_COLOR {
+        + recommendCourses(request: CourseRecommendationRequest): CourseRecommendationResponse
+        + recommendCoursesForSkill(skillName: String, filters: Map): List<CourseDTO>
+        + getPersonalizedRecommendations(userId: Long): List<CourseDTO>
+    }
+    
+    class CourseRecommendationServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - courseRepository: CourseRepository
+        - courseSkillRepository: CourseSkillRepository
+        - skillGapAnalysisService: SkillGapAnalysisService
+        - recommendationEngine: RecommendationEngine
+        --
+        + recommendCourses(request: CourseRecommendationRequest): CourseRecommendationResponse
+        - rankCourses(courses: List<Course>, criteria: Map): List<CourseDTO>
+        - filterByUserPreferences(courses: List<Course>, userId: Long): List<Course>
+        - generateRecommendationReasons(courses: List, gaps: List): Map
+    }
+    
+    interface LearningPathService <<Service>> SERVICE_COLOR {
+        + generateLearningPath(request: LearningPathRequest): LearningPathResponse
+        + getLearningPath(pathId: Long): LearningPathResponse
+        + getUserLearningPaths(userId: Long): List<LearningPathResponse>
+        + deleteLearningPath(pathId: Long): void
+        + startLearningPath(pathId: Long): void
+    }
+    
+    class LearningPathServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - learningPathRepository: LearningPathRepository
+        - milestoneRepository: LearningPathMilestoneRepository
+        - pathCourseRepository: LearningPathCourseRepository
+        - progressRepository: LearningProgressRepository
+        - skillGapAnalysisService: SkillGapAnalysisService
+        - courseRecommendationService: CourseRecommendationService
+        - skillDependencyResolver: SkillDependencyResolver
+        --
+        + generateLearningPath(request: LearningPathRequest): LearningPathResponse
+        - createPhases(skills: List<String>): List<LearningPathMilestone>
+        - assignCoursesToPhases(phases: List<Phase>): void
+        - calculateEstimatedDuration(courses: List<Course>): BigDecimal
+        - resolveSkillOrder(skills: List<String>): List<String>
+        - saveLearningPath(path: LearningPath, milestones: List): LearningPath
+    }
+    
+    interface LearningProgressService <<Service>> SERVICE_COLOR {
+        + getProgress(userId: Long, pathId: Long): LearningProgressDTO
+        + completeCourse(userId: Long, pathId: Long, request: CompleteCourseRequest): CompleteCourseResponse
+        + updateProgress(userId: Long, pathId: Long): void
+        + getUserOverallProgress(userId: Long): Map<String, Object>
+    }
+    
+    class LearningProgressServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - progressRepository: LearningProgressRepository
+        - courseCompletionRepository: CourseCompletionHistoryRepository
+        - phaseCompletionRepository: PhaseCompletionHistoryRepository
+        - learningPathRepository: LearningPathRepository
+        - milestoneRepository: LearningPathMilestoneRepository
+        - resumeServiceClient: ResumeServiceClient
+        - notificationServiceClient: NotificationServiceClient
+        --
+        + completeCourse(userId: Long, pathId: Long, request: CompleteCourseRequest): CompleteCourseResponse
+        - checkPhaseCompletion(userId: Long, pathId: Long, phaseId: Long): boolean
+        - checkPathCompletion(userId: Long, pathId: Long): boolean
+        - addSkillToResume(userId: Long, skillName: String, certificateUrl: String): void
+        - sendCompletionNotification(userId: Long, phaseName: String, skillAdded: String): void
+        - calculateProgressPercentage(progress: LearningProgress, path: LearningPath): BigDecimal
+    }
+}
+
+' Service implementations
+CourseServiceImpl ..|> CourseService
+CourseScraperServiceImpl ..|> CourseScraperService
+SkillGapAnalysisServiceImpl ..|> SkillGapAnalysisService
+CourseRecommendationServiceImpl ..|> CourseRecommendationService
+LearningPathServiceImpl ..|> LearningPathService
+LearningProgressServiceImpl ..|> LearningProgressService
+
+' Service dependencies (simplified)
+CourseServiceImpl --> "uses" CourseRepository
+CourseScraperServiceImpl --> "uses" CourseRepository
+SkillGapAnalysisServiceImpl --> "uses" CourseService
+CourseRecommendationServiceImpl --> "uses" CourseService
+CourseRecommendationServiceImpl --> "uses" SkillGapAnalysisService
+LearningPathServiceImpl --> "uses" SkillGapAnalysisService
+LearningPathServiceImpl --> "uses" CourseRecommendationService
+LearningProgressServiceImpl --> "uses" LearningPathRepository
+
+note top of CourseService
+  @Service
+  Handles course retrieval and search
+  Cached for performance
+end note
+
+note top of SkillGapAnalysisService
+  @Service
+  Core analysis logic:
+  1. Get user skills from Resume Service
+  2. Get required skills from Job Matcher
+  3. Identify and prioritize gaps
+end note
+
+note top of LearningPathService
+  @Service
+  Path generation algorithm:
+  1. Analyze skill gaps
+  2. Resolve dependencies (topological sort)
+  3. Create phases
+  4. Assign courses to phases
+end note
+
+note bottom of LearningProgressService
+  @Service
+  Tracks progress and handles:
+  - Course completions
+  - Phase completions
+  - Resume skill updates
+  - Notifications
+end note
+
+@enduml

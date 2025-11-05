@@ -1,0 +1,178 @@
+@startuml Job Matcher Service Class Diagram
+
+!define ENTITY_COLOR #E1F5FE
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.model" <<Rectangle>> {
+    
+    class Job <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - externalJobId: String
+        - source: JobSource
+        - title: String
+        - companyName: String
+        - companyLogoUrl: String
+        - location: String
+        - jobType: JobType
+        - experienceRequired: String
+        - salaryMin: BigDecimal
+        - salaryMax: BigDecimal
+        - salaryCurrency: String
+        - description: String
+        - requirements: String
+        - responsibilities: String
+        - benefits: String
+        - applicationUrl: String
+        - postedDate: LocalDate
+        - expiryDate: LocalDate
+        - isActive: Boolean
+        - viewCount: Integer
+        - clickCount: Integer
+        - fetchedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + incrementViewCount(): void
+        + incrementClickCount(): void
+    }
+    
+    class JobSkill <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - jobId: Long
+        - skillName: String
+        - isRequired: Boolean
+        - proficiencyLevel: ProficiencyLevel
+        --
+        + getters/setters()
+    }
+    
+    class JobMatch <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - jobId: Long
+        - matchScore: BigDecimal
+        - matchedSkillsCount: Integer
+        - missingSkillsCount: Integer
+        - matchedSkills: String
+        - missingSkills: String
+        - experienceMatchScore: BigDecimal
+        - locationMatchScore: BigDecimal
+        - viewed: Boolean
+        - viewedAt: LocalDateTime
+        - clicked: Boolean
+        - clickedAt: LocalDateTime
+        - clickCount: Integer
+        - calculatedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + markAsViewed(): void
+        + markAsClicked(): void
+        + incrementClickCount(): void
+    }
+    
+    class UserJobSearch <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - searchQuery: String
+        - location: String
+        - jobType: String
+        - filters: String
+        - resultsCount: Integer
+        - hasResults: Boolean
+        - searchDurationMs: Integer
+        - searchedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class SavedJob <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - jobId: Long
+        - notes: String
+        - savedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class JobClickHistory <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - jobId: Long
+        - matchScore: BigDecimal
+        - clickedAt: LocalDateTime
+        - userAgent: String
+        - referrerPage: String
+        - destinationUrl: String
+        - applied: Boolean
+        - gotInterview: Boolean
+        - feedbackCollectedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class JobAlert <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - isEnabled: Boolean
+        - frequency: AlertFrequency
+        - minMatchScore: BigDecimal
+        - searchCriteria: String
+        - lastSentAt: LocalDateTime
+        - jobsSentCount: Integer
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + shouldSendAlert(): boolean
+    }
+    
+    enum JobSource {
+        NAUKRI
+        LINKEDIN
+        GLASSDOOR
+        INDEED
+        MANUAL
+    }
+    
+    enum JobType {
+        FULL_TIME
+        PART_TIME
+        CONTRACT
+        INTERNSHIP
+        REMOTE
+    }
+    
+    enum ProficiencyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+        EXPERT
+    }
+    
+    enum AlertFrequency {
+        DAILY
+        WEEKLY
+        IMMEDIATE
+    }
+}
+
+Job "1" -- "0..*" JobSkill
+Job "1" -- "0..*" JobMatch
+Job "1" -- "0..*" SavedJob
+Job "1" -- "0..*" JobClickHistory
+
+note right of Job
+  Main entity storing
+  job listings from
+  multiple sources
+end note
+
+@enduml

@@ -1,0 +1,150 @@
+@startuml Resume Service Class Diagram
+
+!define SERVICE_COLOR #F0F4C3
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.service" <<Rectangle>> {
+    
+    interface ResumeService <<Service>> SERVICE_COLOR {
+        + uploadResume(request: ResumeUploadRequest): ResumeUploadResponse
+        + getResumeById(resumeId: Long): ResumeDTO
+        + getUserResumes(userId: Long): List<ResumeDTO>
+        + getLatestResume(userId: Long): ResumeDTO
+        + deleteResume(resumeId: Long): void
+        + getResumesByStatus(status: ParseStatus): List<ResumeDTO>
+    }
+    
+    class ResumeServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - resumeRepository: ResumeRepository
+        - storageService: StorageService
+        - resumeParserService: ResumeParserService
+        - resumeAnalysisService: ResumeAnalysisService
+        - resumeMapper: ResumeMapper
+        --
+        + uploadResume(request: ResumeUploadRequest): ResumeUploadResponse
+        + getResumeById(resumeId: Long): ResumeDTO
+        + getUserResumes(userId: Long): List<ResumeDTO>
+        - validateFile(file: MultipartFile): void
+        - saveResumeMetadata(userId: Long, fileUrl: String): Resume
+    }
+    
+    interface StorageService <<Service>> SERVICE_COLOR {
+        + uploadFile(file: MultipartFile, folder: String): StorageResult
+        + getFileUrl(identifier: String): String
+        + deleteFile(identifier: String): void
+    }
+    
+    class CloudinaryStorageService <<ServiceImpl>> SERVICE_COLOR {
+        - cloudinary: Cloudinary
+        --
+        + uploadFile(file: MultipartFile, folder: String): StorageResult
+        + getFileUrl(identifier: String): String
+        + deleteFile(identifier: String): void
+    }
+    
+    class S3StorageService <<ServiceImpl>> SERVICE_COLOR {
+        - s3Client: AmazonS3
+        - bucketName: String
+        --
+        + uploadFile(file: MultipartFile, folder: String): StorageResult
+        + getFileUrl(identifier: String): String
+        + deleteFile(identifier: String): void
+    }
+    
+    interface ResumeParserService <<Service>> SERVICE_COLOR {
+        + parseResume(resumeId: Long, fileUrl: String): void
+        + extractTextFromPdf(file: InputStream): String
+        + extractPersonalInfo(text: String): ResumePersonalInfo
+        + extractSkills(text: String): List<ResumeSkill>
+        + extractExperience(text: String): List<ResumeExperience>
+    }
+    
+    class ResumeParserServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - nlpServiceClient: NLPServiceClient
+        - tikaParser: TikaParser
+        - personalInfoRepo: ResumePersonalInfoRepository
+        - skillRepo: ResumeSkillRepository
+        - experienceRepo: ResumeExperienceRepository
+        --
+        + parseResume(resumeId: Long, fileUrl: String): void
+        - extractTextUsingTika(file: InputStream): String
+        - callNLPService(text: String): ParsedResumeData
+        - saveExtractedData(resumeId: Long, data: ParsedResumeData): void
+    }
+    
+    interface ResumeAnalysisService <<Service>> SERVICE_COLOR {
+        + analyzeResume(resumeId: Long): ResumeAnalysisDTO
+        + calculateQualityScore(resumeId: Long): int
+        + generateSuggestions(resumeId: Long): List<String>
+    }
+    
+    class ResumeAnalysisServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - resumeRepository: ResumeRepository
+        - analysisRepository: ResumeAnalysisRepository
+        - skillRepository: ResumeSkillRepository
+        - experienceRepository: ResumeExperienceRepository
+        --
+        + analyzeResume(resumeId: Long): ResumeAnalysisDTO
+        + calculateQualityScore(resumeId: Long): int
+        - calculateCompletenessScore(resumeId: Long): int
+        - calculateKeywordScore(resumeId: Long): int
+        - generateSuggestions(resumeId: Long): List<String>
+    }
+    
+    interface SkillService <<Service>> SERVICE_COLOR {
+        + addSkill(resumeId: Long, request: AddSkillRequest): ResumeSkillDTO
+        + getSkillsByResume(resumeId: Long): List<ResumeSkillDTO>
+        + updateSkill(skillId: Long, request: AddSkillRequest): ResumeSkillDTO
+        + deleteSkill(skillId: Long): void
+    }
+    
+    class SkillServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - skillRepository: ResumeSkillRepository
+        - resumeRepository: ResumeRepository
+        - skillMapper: SkillMapper
+        --
+        + addSkill(resumeId: Long, request: AddSkillRequest): ResumeSkillDTO
+        + getSkillsByResume(resumeId: Long): List<ResumeSkillDTO>
+        - validateSkillRequest(request: AddSkillRequest): void
+    }
+}
+
+' Service implementations
+ResumeServiceImpl ..|> ResumeService
+CloudinaryStorageService ..|> StorageService
+S3StorageService ..|> StorageService
+ResumeParserServiceImpl ..|> ResumeParserService
+ResumeAnalysisServiceImpl ..|> ResumeAnalysisService
+SkillServiceImpl ..|> SkillService
+
+' Service dependencies
+ResumeServiceImpl --> ResumeRepository
+ResumeServiceImpl --> StorageService
+ResumeServiceImpl --> ResumeParserService
+ResumeServiceImpl --> ResumeAnalysisService
+
+ResumeParserServiceImpl --> NLPServiceClient
+ResumeParserServiceImpl --> ResumePersonalInfoRepository
+ResumeParserServiceImpl --> ResumeSkillRepository
+ResumeParserServiceImpl --> ResumeExperienceRepository
+
+ResumeAnalysisServiceImpl --> ResumeRepository
+ResumeAnalysisServiceImpl --> ResumeAnalysisRepository
+ResumeAnalysisServiceImpl --> ResumeSkillRepository
+
+' Controller dependencies
+ResumeController --> ResumeService
+ResumeAnalysisController --> ResumeAnalysisService
+SkillController --> SkillService
+
+note right of ResumeParserService
+  Uses Apache Tika + NLP Service
+  for text extraction and parsing
+end note
+
+@endumls

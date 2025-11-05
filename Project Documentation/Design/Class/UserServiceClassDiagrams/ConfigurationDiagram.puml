@@ -27,7 +27,7 @@ package "com.careernexus.userservice.config" <<Rectangle>> {
         - extractTokenFromRequest(request: HttpServletRequest): String
         - validateAndSetAuthentication(token: String): void
     }
-    
+    '! Not Compulsory if using application.properties to set DB configuration 
     class DatabaseConfig <<Configuration>> CONFIG_COLOR {
         + dataSource(): DataSource
         + entityManagerFactory(): LocalContainerEntityManagerFactoryBean

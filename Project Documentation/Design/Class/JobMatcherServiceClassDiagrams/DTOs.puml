@@ -1,0 +1,122 @@
+@startuml Job Matcher Service Class Diagram
+
+!define DTO_COLOR #E1BEE7
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.dto" <<Rectangle>> {
+    
+    class JobDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - title: String
+        - companyName: String
+        - companyLogoUrl: String
+        - location: String
+        - jobType: String
+        - experienceRequired: String
+        - salaryMin: BigDecimal
+        - salaryMax: BigDecimal
+        - description: String
+        - requirements: String
+        - applicationUrl: String
+        - postedDate: LocalDate
+        - skills: List<JobSkillDTO>
+        --
+        + getters/setters()
+    }
+    
+    class JobSkillDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - isRequired: Boolean
+        - proficiencyLevel: String
+        --
+        + getters/setters()
+    }
+    
+    class JobSearchRequest <<DTO>> DTO_COLOR {
+        - query: String
+        - location: String
+        - jobType: String
+        - experienceLevel: String
+        - salaryMin: BigDecimal
+        - salaryMax: BigDecimal
+        - skills: List<String>
+        - remoteOnly: Boolean
+        - postedWithinDays: Integer
+        --
+        + validate(): void
+    }
+    
+    class JobSearchResponse <<DTO>> DTO_COLOR {
+        - jobs: List<JobDTO>
+        - totalCount: Integer
+        - page: Integer
+        - pageSize: Integer
+        - searchDuration: Long
+        --
+        + getters/setters()
+    }
+    
+    class JobMatchDTO <<DTO>> DTO_COLOR {
+        - jobId: Long
+        - job: JobDTO
+        - matchScore: BigDecimal
+        - matchedSkills: List<String>
+        - missingSkills: List<String>
+        - matchedSkillsCount: Integer
+        - missingSkillsCount: Integer
+        - experienceMatchScore: BigDecimal
+        - locationMatchScore: BigDecimal
+        - viewed: Boolean
+        - clicked: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class JobRecommendationRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - limit: Integer
+        - minMatchScore: BigDecimal
+        - includeViewed: Boolean
+        --
+        + validate(): void
+    }
+    
+    class JobRecommendationResponse <<DTO>> DTO_COLOR {
+        - matches: List<JobMatchDTO>
+        - totalMatches: Integer
+        - averageMatchScore: BigDecimal
+        --
+        + getters/setters()
+    }
+    
+    class TrackClickRequest <<DTO>> DTO_COLOR {
+        - jobId: Long
+        - referrerPage: String
+        - userAgent: String
+        --
+        + validate(): void
+    }
+    
+    class SaveJobRequest <<DTO>> DTO_COLOR {
+        - jobId: Long
+        - notes: String
+        --
+        + validate(): void
+    }
+    
+    class JobAlertRequest <<DTO>> DTO_COLOR {
+        - isEnabled: Boolean
+        - frequency: String
+        - minMatchScore: BigDecimal
+        - searchCriteria: Map<String, Object>
+        --
+        + validate(): void
+    }
+}
+
+@enduml

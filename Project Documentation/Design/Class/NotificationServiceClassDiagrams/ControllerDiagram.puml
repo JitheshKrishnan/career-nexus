@@ -1,0 +1,55 @@
+@startuml Notification Service - Controller Package
+
+!define CONTROLLER_COLOR #FFE0B2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Notification Service - Controller Package
+
+package "com.careernexus.notificationservice.controller" {
+    
+    class NotificationController <<RestController>> CONTROLLER_COLOR{
+        - notificationService: NotificationService
+        --
+        + sendNotification(request: SendNotificationRequest): ResponseEntity<SendNotificationResponse>
+        + getUserNotifications(userId: Long): ResponseEntity<List<NotificationDTO>>
+        + getUnreadNotifications(userId: Long): ResponseEntity<List<NotificationDTO>>
+        + markAsRead(notificationId: Long): ResponseEntity<Void>
+        + markAllAsRead(userId: Long): ResponseEntity<Void>
+        + deleteNotification(notificationId: Long): ResponseEntity<Void>
+        + getUnreadCount(userId: Long): ResponseEntity<Long>
+        --
+        @PostMapping("/notifications/send")
+        @GetMapping("/notifications/user/{userId}")
+    }
+    
+    class EmailController <<RestController>> CONTROLLER_COLOR{
+        - emailService: EmailService
+        --
+        + sendEmail(request: EmailRequest): ResponseEntity<String>
+        + sendTemplatedEmail(templateName: String, to: String, data: Map): ResponseEntity<String>
+        --
+        @PostMapping("/emails/send")
+        @PostMapping("/emails/send-templated")
+    }
+    
+    class WebhookController <<RestController>> CONTROLLER_COLOR{
+        - webhookService: WebhookService
+        --
+        + handleSendGridWebhook(event: WebhookEventDTO): ResponseEntity<Void>
+        + handleFCMWebhook(event: WebhookEventDTO): ResponseEntity<Void>
+        --
+        @PostMapping("/webhooks/sendgrid")
+        @PostMapping("/webhooks/fcm")
+    }
+}
+
+' Relationships
+NotificationController --> NotificationService : uses
+EmailController --> EmailService : uses
+WebhookController --> WebhookService : uses
+
+@enduml

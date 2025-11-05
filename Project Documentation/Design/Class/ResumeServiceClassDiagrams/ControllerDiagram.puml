@@ -1,0 +1,45 @@
+@startuml Resume Service Class Diagram
+
+!define CONTROLLER_COLOR #FFE0B2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.controller" <<Rectangle>> {
+    
+    class ResumeController <<RestController>> CONTROLLER_COLOR {
+        - resumeService: ResumeService
+        --
+        + uploadResume(request: ResumeUploadRequest): ResponseEntity<ResumeUploadResponse>
+        + getResume(resumeId: Long): ResponseEntity<ResumeDTO>
+        + getUserResumes(userId: Long): ResponseEntity<List<ResumeDTO>>
+        + getLatestResume(userId: Long): ResponseEntity<ResumeDTO>
+        + deleteResume(resumeId: Long): ResponseEntity<Void>
+    }
+    
+    class ResumeAnalysisController <<RestController>> CONTROLLER_COLOR {
+        - analysisService: ResumeAnalysisService
+        --
+        + analyzeResume(resumeId: Long): ResponseEntity<ResumeAnalysisDTO>
+        + getQualityScore(resumeId: Long): ResponseEntity<Integer>
+    }
+    
+    class SkillController <<RestController>> CONTROLLER_COLOR {
+        - skillService: SkillService
+        --
+        + addSkill(resumeId: Long, request: AddSkillRequest): ResponseEntity<ResumeSkillDTO>
+        + getSkills(resumeId: Long): ResponseEntity<List<ResumeSkillDTO>>
+        + updateSkill(skillId: Long, request: AddSkillRequest): ResponseEntity<ResumeSkillDTO>
+        + deleteSkill(skillId: Long): ResponseEntity<Void>
+    }
+}
+
+' Controller dependencies
+ResumeController --> ResumeService
+ResumeAnalysisController --> ResumeAnalysisService
+SkillController --> SkillService
+
+@enduml

@@ -1,0 +1,212 @@
+@startuml Learning Service - DTO Package
+
+!define DTO_COLOR #E1BEE7
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Learning Service - DTO Package (Data Transfer Layer)
+
+package "com.careernexus.learningservice.dto" {
+    
+    class CourseDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - title: String
+        - instructorName: String
+        - source: String
+        - courseUrl: String
+        - price: BigDecimal
+        - durationHours: BigDecimal
+        - difficultyLevel: String
+        - rating: BigDecimal
+        - hasCertificate: Boolean
+        - isFree: Boolean
+        - skills: List<String>
+        - thumbnailUrl: String
+        --
+        + getters/setters()
+        + builder(): CourseDTO.Builder
+    }
+    
+    class CourseSearchRequest <<DTO>> DTO_COLOR {
+        - skillName: String
+        - source: String
+        - difficultyLevel: String
+        - isFree: Boolean
+        - hasCertificate: Boolean
+        - maxPrice: BigDecimal
+        - minRating: BigDecimal
+        --
+        + validate(): void
+        + hasFilters(): boolean
+    }
+    
+    class CourseRecommendationRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - skillGaps: List<String>
+        - difficultyLevel: String
+        - preferFree: Boolean
+        - limit: Integer
+        - maxPrice: BigDecimal
+        --
+        + validate(): void
+        + getLimit(): int (default: 10)
+    }
+    
+    class CourseRecommendationResponse <<DTO>> DTO_COLOR {
+        - courses: List<CourseDTO>
+        - totalCount: Integer
+        - recommendationReason: Map<Long, String>
+        - generatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + hasRecommendations(): boolean
+    }
+    
+    class SkillGapAnalysisRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - targetRole: String
+        - targetJobId: Long
+        --
+        + validate(): void
+        + hasTargetJob(): boolean
+    }
+    
+    class SkillGapAnalysisResponse <<DTO>> DTO_COLOR {
+        - currentSkills: List<String>
+        - requiredSkills: List<String>
+        - missingSkills: List<SkillGapDTO>
+        - skillGapsCount: Integer
+        - matchPercentage: BigDecimal
+        --
+        + getters/setters()
+        + hasGaps(): boolean
+    }
+    
+    class SkillGapDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - priority: String
+        - hasPrerequisites: Boolean
+        - prerequisites: List<String>
+        - recommendedCourses: List<CourseDTO>
+        --
+        + getters/setters()
+        + isHighPriority(): boolean
+    }
+    
+    class LearningPathRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - targetRole: String
+        - skillGaps: List<String>
+        - timeAvailablePerWeek: Integer
+        - preferredSources: List<String>
+        - preferFreeCourses: Boolean
+        --
+        + validate(): void
+        + hasTimeConstraint(): boolean
+    }
+    
+    class LearningPathResponse <<DTO>> DTO_COLOR {
+        - pathId: Long
+        - title: String
+        - description: String
+        - totalPhases: Integer
+        - totalCourses: Integer
+        - estimatedDurationHours: BigDecimal
+        - phases: List<PhaseDTO>
+        - status: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + calculateEstimatedWeeks(hoursPerWeek: int): int
+    }
+    
+    class PhaseDTO <<DTO>> DTO_COLOR {
+        - phaseNumber: Integer
+        - phaseName: String
+        - description: String
+        - primarySkill: String
+        - estimatedDurationHours: BigDecimal
+        - courses: List<CourseDTO>
+        - isCompleted: Boolean
+        --
+        + getters/setters()
+        + getCourseCount(): int
+    }
+    
+    class LearningProgressDTO <<DTO>> DTO_COLOR {
+        - pathId: Long
+        - pathTitle: String
+        - currentPhase: Integer
+        - totalPhases: Integer
+        - completedCourses: Integer
+        - totalCourses: Integer
+        - completionPercentage: BigDecimal
+        - timeSpentHours: BigDecimal
+        - estimatedTimeRemaining: BigDecimal
+        - lastActivityAt: LocalDateTime
+        - status: String
+        --
+        + getters/setters()
+        + isCompleted(): boolean
+        + isOnTrack(expectedProgress: int): boolean
+    }
+    
+    class CompleteCourseRequest <<DTO>> DTO_COLOR {
+        - courseId: String
+        - phaseId: Long
+        - completionDate: LocalDate
+        - certificateUrl: String
+        - timeSpentHours: BigDecimal
+        --
+        + validate(): void
+        + hasCertificate(): boolean
+    }
+    
+    class CompleteCourseResponse <<DTO>> DTO_COLOR {
+        - success: Boolean
+        - courseCompleted: Boolean
+        - phaseCompleted: Boolean
+        - pathCompleted: Boolean
+        - progress: LearningProgressDTO
+        - skillAdded: String
+        - message: String
+        - nextPhase: PhaseDTO
+        --
+        + getters/setters()
+        + hasAchievement(): boolean
+    }
+}
+
+' Relationships
+CourseRecommendationResponse "1" *-- "0..*" CourseDTO : contains
+SkillGapAnalysisResponse "1" *-- "0..*" SkillGapDTO : contains
+SkillGapDTO "1" *-- "0..*" CourseDTO : recommends
+LearningPathResponse "1" *-- "0..*" PhaseDTO : contains
+PhaseDTO "1" *-- "0..*" CourseDTO : includes
+CompleteCourseResponse "1" *-- "1" LearningProgressDTO : includes
+CompleteCourseResponse "1" *-- "0..1" PhaseDTO : nextPhase
+
+note top of CourseDTO
+  Used for API responses
+  Simplified course representation
+end note
+
+note top of SkillGapAnalysisResponse
+  Returns comprehensive gap analysis
+  with prioritized missing skills
+end note
+
+note top of LearningPathResponse
+  Complete learning path structure
+  with all phases and courses
+end note
+
+note bottom of CompleteCourseResponse
+  Returns updated progress
+  and any achievements/milestones
+end note
+
+@enduml

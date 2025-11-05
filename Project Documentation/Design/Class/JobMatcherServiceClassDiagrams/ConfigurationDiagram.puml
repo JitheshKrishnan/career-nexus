@@ -1,0 +1,33 @@
+@startuml Job Matcher Service Class Diagram
+
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.config" <<Rectangle>> {
+    
+    class ElasticsearchConfig <<Configuration>> CONFIG_COLOR {
+        + restHighLevelClient(): RestHighLevelClient
+        + elasticsearchOperations(): ElasticsearchOperations
+    }
+    
+    class ScheduledJobsConfig <<Configuration>> CONFIG_COLOR {
+        - jobScraperService: JobScraperService
+        - jobAlertService: JobAlertService
+        --
+        + scrapeJobsPeriodically(): void
+        + deactivateExpiredJobs(): void
+        + processJobAlerts(): void
+    }
+    
+    class CacheConfig <<Configuration>> CONFIG_COLOR {
+        + cacheManager(): CacheManager
+        + redisCacheConfiguration(): RedisCacheConfiguration
+    }
+}
+
+@enduml

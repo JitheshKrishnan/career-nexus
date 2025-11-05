@@ -1,0 +1,32 @@
+@startuml Job Matcher Service Class Diagram
+
+!define EXCEPTION_COLOR #FFCDD2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.exception" <<Rectangle>> {
+    
+    class JobNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + JobNotFoundException(jobId: Long)
+    }
+    
+    class JobScrapingException <<Exception>> EXCEPTION_COLOR {
+        + JobScrapingException(message: String, cause: Throwable)
+    }
+    
+    class InvalidSearchException <<Exception>> EXCEPTION_COLOR {
+        + InvalidSearchException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleJobNotFoundException(ex: JobNotFoundException): ResponseEntity<ErrorResponse>
+        + handleJobScrapingException(ex: JobScrapingException): ResponseEntity<ErrorResponse>
+        + handleInvalidSearchException(ex: InvalidSearchException): ResponseEntity<ErrorResponse>
+    }
+}
+
+@enduml

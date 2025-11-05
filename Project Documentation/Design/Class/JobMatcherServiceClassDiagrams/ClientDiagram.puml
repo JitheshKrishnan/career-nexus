@@ -1,0 +1,42 @@
+@startuml Job Matcher Service Class Diagram
+
+!define DTO_COLOR #E1BEE7
+!define CLIENT_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.jobmatcher.client" <<Rectangle>> {
+    
+    interface ResumeServiceClient <<FeignClient>> CLIENT_COLOR {
+        + getUserResume(userId: Long): ResumeDTO
+        + getUserSkills(userId: Long): List<SkillDTO>
+    }
+    
+    interface NotificationServiceClient <<FeignClient>> CLIENT_COLOR {
+        + sendJobMatchAlert(userId: Long, jobs: List<JobDTO>): void
+    }
+    
+    class ResumeDTO <<DTO>> DTO_COLOR {
+        - userId: Long
+        - skills: List<SkillDTO>
+        - experience: List<ExperienceDTO>
+        --
+        + getters/setters()
+    }
+    
+    class SkillDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - proficiencyLevel: String
+        --
+        + getters/setters()
+    }
+}
+
+JobMatchingServiceImpl --> ResumeServiceClient
+JobAlertServiceImpl --> NotificationServiceClient
+
+@enduml

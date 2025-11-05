@@ -1,0 +1,198 @@
+@startuml Notification Service - Entity Package
+
+!define ENTITY_COLOR #E1F5FE
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Notification Service - Entity Package (Model Layer)
+
+package "com.careernexus.notificationservice.model" {
+    
+    class Notification <<Entity>> ENTITY_COLOR{
+        - id: Long {PK}
+        - userId: Long
+        - type: NotificationType
+        - title: String
+        - message: String
+        - data: String {JSON}
+        - link: String
+        - isRead: Boolean
+        - readAt: LocalDateTime
+        - priority: NotificationPriority
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + markAsRead(): void
+        + getDataAsMap(): Map<String, Object>
+        + isUnread(): boolean
+        + isHighPriority(): boolean
+    }
+    
+    class NotificationDeliveryLog <<Entity>> ENTITY_COLOR{
+        - id: Long {PK}
+        - notificationId: Long {FK}
+        - userId: Long
+        - notificationType: String
+        - channel: NotificationChannel
+        - provider: String
+        - providerMessageId: String
+        - recipientAddress: String
+        - status: DeliveryStatus
+        - errorMessage: String
+        - sentAt: LocalDateTime
+        - deliveredAt: LocalDateTime
+        - clicked: Boolean
+        - clickedAt: LocalDateTime
+        - metadata: String {JSON}
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + markAsDelivered(): void
+        + markAsClicked(): void
+        + isFailed(): boolean
+        + isSuccessful(): boolean
+        + calculateDeliveryTime(): Duration
+    }
+    
+    class UserNotificationPreferences <<Entity>> ENTITY_COLOR{
+        - id: Long {PK}
+        - userId: Long {unique}
+        - emailEnabled: Boolean
+        - pushEnabled: Boolean
+        - smsEnabled: Boolean
+        - jobAlertsEnabled: Boolean
+        - learningRemindersEnabled: Boolean
+        - phaseCompletionAlertsEnabled: Boolean
+        - systemNotificationsEnabled: Boolean
+        - marketingEmailsEnabled: Boolean
+        - jobAlertFrequency: AlertFrequency
+        - learningReminderTime: LocalTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isChannelEnabled(channel: NotificationChannel): boolean
+        + isNotificationTypeEnabled(type: NotificationType): boolean
+        + createDefault(userId: Long): UserNotificationPreferences
+    }
+    
+    class UserDevice <<Entity>> ENTITY_COLOR{
+        - id: Long {PK}
+        - userId: Long
+        - deviceType: DeviceType
+        - fcmToken: String {unique}
+        - deviceName: String
+        - osVersion: String
+        - appVersion: String
+        - isActive: Boolean
+        - lastUsedAt: LocalDateTime
+        - registeredAt: LocalDateTime
+        --
+        + getters/setters()
+        + deactivate(): void
+        + activate(): void
+        + updateLastUsed(): void
+        + isExpired(): boolean
+    }
+    
+    class EmailTemplate <<Entity>> ENTITY_COLOR{
+        - id: Long {PK}
+        - templateName: String {unique}
+        - subjectTemplate: String
+        - htmlTemplate: String
+        - textTemplate: String
+        - variables: String {JSON}
+        - isActive: Boolean
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + getVariablesAsList(): List<String>
+        + renderSubject(data: Map): String
+        + renderHtml(data: Map): String
+        + renderText(data: Map): String
+        + validate(): boolean
+    }
+    
+    enum NotificationType {
+        JOB_MATCH_ALERT
+        PHASE_COMPLETED
+        SKILL_ADDED
+        RESUME_PARSED
+        PASSWORD_RESET
+        EMAIL_VERIFICATION
+        COURSE_REMINDER
+        SYSTEM
+        WELCOME
+    }
+    
+    enum NotificationChannel {
+        EMAIL
+        PUSH
+        SMS
+        IN_APP
+    }
+    
+    enum NotificationPriority {
+        LOW
+        MEDIUM
+        HIGH
+        URGENT
+    }
+    
+    enum DeliveryStatus {
+        QUEUED
+        SENT
+        DELIVERED
+        FAILED
+        BOUNCED
+    }
+    
+    enum AlertFrequency {
+        IMMEDIATE
+        DAILY
+        WEEKLY
+    }
+    
+    enum DeviceType {
+        ANDROID
+        IOS
+        WEB
+    }
+}
+
+' Relationships
+Notification "1" -- "0..*" NotificationDeliveryLog : logs
+UserDevice "*" -- "1" DeviceType : has
+
+note top of Notification
+  @Entity
+  @Table(name = "notifications")
+  In-app notifications for users
+  Stored for notification history
+end note
+
+note top of NotificationDeliveryLog
+  @Entity
+  @Table(name = "notification_delivery_logs")
+  Tracks delivery status across channels
+  Supports webhook updates from providers
+end note
+
+note top of UserNotificationPreferences
+  @Entity
+  @Table(name = "user_notification_preferences")
+  User-configurable notification settings
+  Controls which channels and types are enabled
+end note
+
+note top of EmailTemplate
+  @Entity
+  @Table(name = "email_templates")
+  Reusable email templates
+  with variable substitution
+end note
+
+@enduml

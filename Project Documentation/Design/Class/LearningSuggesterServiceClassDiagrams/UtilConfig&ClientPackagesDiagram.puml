@@ -1,0 +1,221 @@
+@startuml Learning Service - Util, Config & Client Packages
+
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+!define CLIENT_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Learning Service - Util, Config & Client Packages
+
+package "com.careernexus.learningservice.util" {
+    
+    class CourseMapper <<Mapper>> UTIL_COLOR{
+        + toDTO(course: Course): CourseDTO
+        + toEntity(dto: CourseDTO): Course
+        + toDTOList(courses: List<Course>): List<CourseDTO>
+        + enrichWithSkills(dto: CourseDTO, skills: List<CourseSkill>): CourseDTO
+        --
+        Uses MapStruct for mapping
+    }
+    
+    class LearningPathMapper <<Mapper>> UTIL_COLOR{
+        + toResponse(path: LearningPath, milestones: List): LearningPathResponse
+        + toProgressDTO(progress: LearningProgress, path: LearningPath): LearningProgressDTO
+        + toPhaseDTO(milestone: LearningPathMilestone, courses: List): PhaseDTO
+        --
+        Complex mapping with nested structures
+    }
+    
+    class SkillDependencyResolver <<Utility>> UTIL_COLOR{
+        - skillDependencyRepository: SkillDependencyRepository
+        --
+        + resolvePrerequisites(skill: String): List<String>
+        + orderSkillsByDependency(skills: List<String>): List<String>
+        + hasCyclicDependency(skill: String): boolean
+        + buildDependencyGraph(skills: List<String>): Map<String, List<String>>
+        - topologicalSort(graph: Map): List<String>
+        - detectCycle(graph: Map, visited: Set, stack: Set): boolean
+        --
+        **Algorithm: Topological Sort (Kahn's Algorithm)**
+        1. Build adjacency list
+        2. Calculate in-degrees
+        3. Process nodes with zero in-degree
+        4. Return ordered list
+    }
+    
+    class RecommendationEngine <<Utility>> UTIL_COLOR{
+        + rankCourses(courses: List<Course>, criteria: Map): List<Course>
+        + calculateCourseScore(course: Course, userPreferences: Map): BigDecimal
+        + filterByRelevance(courses: List<Course>, skillGaps: List): List<Course>
+        - calculateRatingScore(rating: BigDecimal): BigDecimal
+        - calculatePriceScore(price: BigDecimal, isFree: boolean): BigDecimal
+        - calculatePopularityScore(enrollments: int, reviews: int): BigDecimal
+        --
+        **Scoring Formula:**
+        Total Score = Rating(40%) + Price(30%) + Popularity(20%) + Relevance(10%)
+    }
+    
+    class ProgressCalculator <<Utility>> UTIL_COLOR{
+        + calculateCompletionPercentage(completed: int, total: int): BigDecimal
+        + calculateTimeRemaining(spent: BigDecimal, total: BigDecimal): BigDecimal
+        + estimateCompletionDate(hoursRemaining: BigDecimal, hoursPerWeek: int): LocalDate
+        + calculatePhaseProgress(completedCourses: List, totalCourses: int): BigDecimal
+        --
+        **Formulas:**
+        Percentage = (completed / total) * 100
+        Remaining = total - spent
+        Completion Date = today + (remaining / hoursPerWeek) weeks
+    }
+}
+
+package "com.careernexus.learningservice.config" {
+    
+    class ScheduledTasksConfig <<Configuration>> CONFIG_COLOR{
+        - courseScraperService: CourseScraperService
+        --
+        + scrapeCoursesPeriodically(): void
+        + refreshCourseRatings(): void
+        + cleanupOldAnalyses(): void
+        --
+        @Scheduled(cron = "0 0 2 * * *") // 2 AM daily
+        @Scheduled(cron = "0 0 4 * * 0") // 4 AM every Sunday
+    }
+    
+    class CacheConfig <<Configuration>> CONFIG_COLOR{
+        + cacheManager(): CacheManager
+        + redisCacheConfiguration(): RedisCacheConfiguration
+        --
+        **Caches:**
+        - courses (TTL: 1 hour)
+        - skill-gaps (TTL: 30 minutes)
+        - recommendations (TTL: 15 minutes)
+    }
+    
+    class RestTemplateConfig <<Configuration>> CONFIG_COLOR{
+        + restTemplate(): RestTemplate
+        + requestFactory(): ClientHttpRequestFactory
+        --
+        Configure for web scraping:
+        - Connection timeout: 10s
+        - Read timeout: 30s
+        - User-Agent headers
+    }
+}
+
+package "com.careernexus.learningservice.client" {
+    
+    interface ResumeServiceClient <<FeignClient>> CLIENT_COLOR{
+        + getUserSkills(userId: Long): List<SkillDTO>
+        + addSkillToResume(userId: Long, skill: AddSkillRequest): void
+        + getUserResume(userId: Long): ResumeDTO
+        --
+        @FeignClient(name = "resume-service")
+    }
+    
+    interface JobMatcherServiceClient <<FeignClient>> CLIENT_COLOR{
+        + getJobRequirements(jobId: Long): List<SkillDTO>
+        + getRoleSkillRequirements(role: String): List<SkillDTO>
+        + getJobDetails(jobId: Long): JobDTO
+        --
+        @FeignClient(name = "job-matcher-service")
+    }
+    
+    interface NotificationServiceClient <<FeignClient>> CLIENT_COLOR{
+        + sendNotification(request: NotificationRequest): void
+        + sendPhaseCompletionNotification(userId: Long, data: Map): void
+        --
+        @FeignClient(name = "notification-service")
+    }
+    
+    class SkillDTO <<DTO>> CLIENT_COLOR{
+        - skillName: String
+        - proficiencyLevel: String
+        - yearsOfExperience: BigDecimal
+        --
+        + getters/setters()
+    }
+    
+    class AddSkillRequest <<DTO>> CLIENT_COLOR{
+        - skillName: String
+        - proficiencyLevel: String
+        - acquiredVia: String
+        - certificateUrl: String
+        --
+        + getters/setters()
+    }
+}
+
+package "com.careernexus.learningservice.exception" {
+    
+    class CourseNotFoundException <<Exception>> EXCEPTION_COLOR{
+        + CourseNotFoundException(courseId: Long)
+        + CourseNotFoundException(message: String)
+    }
+    
+    class LearningPathNotFoundException <<Exception>> EXCEPTION_COLOR{
+        + LearningPathNotFoundException(pathId: Long)
+    }
+    
+    class InvalidSkillGapAnalysisException <<Exception>> EXCEPTION_COLOR{
+        + InvalidSkillGapAnalysisException(message: String)
+    }
+    
+    class CourseCompletionException <<Exception>> EXCEPTION_COLOR{
+        + CourseCompletionException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR{
+        + handleCourseNotFoundException(ex: CourseNotFoundException): ResponseEntity<ErrorResponse>
+        + handleLearningPathNotFoundException(ex: LearningPathNotFoundException): ResponseEntity<ErrorResponse>
+        + handleInvalidSkillGapAnalysis(ex: InvalidSkillGapAnalysisException): ResponseEntity<ErrorResponse>
+        + handleValidationException(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse>
+        + handleGenericException(ex: Exception): ResponseEntity<ErrorResponse>
+    }
+    
+    class ErrorResponse <<DTO>> EXCEPTION_COLOR{
+        - timestamp: LocalDateTime
+        - status: int
+        - error: String
+        - message: String
+        - path: String
+        --
+        + getters/setters()
+    }
+}
+
+' Relationships
+SkillDependencyResolver --> SkillDependencyRepository : uses
+RecommendationEngine ..> Course : ranks
+ProgressCalculator ..> LearningProgress : calculates
+ScheduledTasksConfig --> CourseScraperService : schedules
+ResumeServiceClient ..> SkillDTO : returns
+ResumeServiceClient ..> AddSkillRequest : accepts
+
+note top of SkillDependencyResolver
+  Core algorithm for ordering skills
+  Uses topological sort to resolve
+  prerequisite dependencies
+  
+  Example: Docker must come before Kubernetes
+end note
+
+note top of RecommendationEngine
+  Multi-criteria course ranking:
+  1. Rating & reviews (quality)
+  2. Price (affordability)
+  3. Popularity (validation)
+  4. Skill relevance (match)
+end note
+
+note top of ResumeServiceClient
+  @FeignClient
+  Communicates with Resume Service
+  to fetch/update user skills
+end note
+
+@enduml

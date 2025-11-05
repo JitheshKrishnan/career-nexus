@@ -1,0 +1,716 @@
+@startuml Notification Service Class Diagram
+!define ENTITY_COLOR #E1F5FE
+!define REPOSITORY_COLOR #FFF9C4
+!define SERVICE_COLOR #F0F4C3
+!define CONTROLLER_COLOR #FFE0B2
+!define DTO_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+' ============================================
+' PACKAGE: MODEL (ENTITIES)
+' ============================================
+package "com.careernexus.notificationservice.model" <<Rectangle>> {
+    
+    class Notification <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - type: NotificationType
+        - title: String
+        - message: String
+        - data: String
+        - link: String
+        - isRead: Boolean
+        - readAt: LocalDateTime
+        - priority: NotificationPriority
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + markAsRead(): void
+        + getDataAsMap(): Map<String, Object>
+    }
+    
+    class NotificationDeliveryLog <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - notificationId: Long
+        - userId: Long
+        - notificationType: String
+        - channel: NotificationChannel
+        - provider: String
+        - providerMessageId: String
+        - recipientAddress: String
+        - status: DeliveryStatus
+        - errorMessage: String
+        - sentAt: LocalDateTime
+        - deliveredAt: LocalDateTime
+        - clicked: Boolean
+        - clickedAt: LocalDateTime
+        - metadata: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + markAsDelivered(): void
+        + markAsClicked(): void
+        + isFailed(): boolean
+    }
+    
+    class UserNotificationPreferences <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - emailEnabled: Boolean
+        - pushEnabled: Boolean
+        - smsEnabled: Boolean
+        - jobAlertsEnabled: Boolean
+        - learningRemindersEnabled: Boolean
+        - phaseCompletionAlertsEnabled: Boolean
+        - systemNotificationsEnabled: Boolean
+        - marketingEmailsEnabled: Boolean
+        - jobAlertFrequency: AlertFrequency
+        - learningReminderTime: LocalTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isChannelEnabled(channel: NotificationChannel): boolean
+        + isNotificationTypeEnabled(type: NotificationType): boolean
+    }
+    
+    class UserDevice <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - deviceType: DeviceType
+        - fcmToken: String
+        - deviceName: String
+        - osVersion: String
+        - appVersion: String
+        - isActive: Boolean
+        - lastUsedAt: LocalDateTime
+        - registeredAt: LocalDateTime
+        --
+        + getters/setters()
+        + deactivate(): void
+    }
+    
+    class EmailTemplate <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - templateName: String
+        - subjectTemplate: String
+        - htmlTemplate: String
+        - textTemplate: String
+        - variables: String
+        - isActive: Boolean
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + getVariablesAsList(): List<String>
+        + renderSubject(data: Map): String
+        + renderHtml(data: Map): String
+    }
+    
+    enum NotificationType {
+        JOB_MATCH_ALERT
+        PHASE_COMPLETED
+        SKILL_ADDED
+        RESUME_PARSED
+        PASSWORD_RESET
+        EMAIL_VERIFICATION
+        COURSE_REMINDER
+        SYSTEM
+        WELCOME
+    }
+    
+    enum NotificationChannel {
+        EMAIL
+        PUSH
+        SMS
+        IN_APP
+    }
+    
+    enum NotificationPriority {
+        LOW
+        MEDIUM
+        HIGH
+        URGENT
+    }
+    
+    enum DeliveryStatus {
+        QUEUED
+        SENT
+        DELIVERED
+        FAILED
+        BOUNCED
+    }
+    
+    enum AlertFrequency {
+        IMMEDIATE
+        DAILY
+        WEEKLY
+    }
+    
+    enum DeviceType {
+        ANDROID
+        IOS
+        WEB
+    }
+}
+
+' ============================================
+' PACKAGE: REPOSITORY
+' ============================================
+package "com.careernexus.notificationservice.repository" <<Rectangle>> {
+    
+    interface NotificationRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<Notification>
+        + findByUserIdAndIsRead(userId: Long, isRead: Boolean): List<Notification>
+        + findRecentByUserId(userId: Long, limit: int): List<Notification>
+        + findByUserIdAndType(userId: Long, type: NotificationType): List<Notification>
+        + countUnreadByUserId(userId: Long): long
+        + markAllAsRead(userId: Long): void
+        + deleteOldNotifications(beforeDate: LocalDateTime): void
+    }
+    
+    interface NotificationDeliveryLogRepository <<Repository>> REPOSITORY_COLOR {
+        + findByNotificationId(notificationId: Long): List<NotificationDeliveryLog>
+        + findByUserId(userId: Long): List<NotificationDeliveryLog>
+        + findByProviderMessageId(messageId: String): Optional<NotificationDeliveryLog>
+        + findByStatus(status: DeliveryStatus): List<NotificationDeliveryLog>
+        + countByUserIdAndChannel(userId: Long, channel: NotificationChannel): long
+        + findFailedDeliveries(beforeDate: LocalDateTime): List<NotificationDeliveryLog>
+    }
+    
+    interface UserNotificationPreferencesRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): Optional<UserNotificationPreferences>
+        + existsByUserId(userId: Long): boolean
+    }
+    
+    interface UserDeviceRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<UserDevice>
+        + findByUserIdAndIsActive(userId: Long, isActive: Boolean): List<UserDevice>
+        + findByFcmToken(fcmToken: String): Optional<UserDevice>
+        + deactivateOldDevices(userId: Long, lastUsedBefore: LocalDateTime): void
+    }
+    
+    interface EmailTemplateRepository <<Repository>> REPOSITORY_COLOR {
+        + findByTemplateName(name: String): Optional<EmailTemplate>
+        + findByIsActiveTrue(): List<EmailTemplate>
+    }
+}
+
+' ============================================
+' PACKAGE: DTO
+' ============================================
+package "com.careernexus.notificationservice.dto" <<Rectangle>> {
+    
+    class SendNotificationRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - type: String
+        - channels: List<String>
+        - priority: String
+        - data: Map<String, Object>
+        - templateName: String
+        --
+        + validate(): void
+    }
+    
+    class SendNotificationResponse <<DTO>> DTO_COLOR {
+        - notificationId: Long
+        - status: String
+        - channelResults: Map<String, Boolean>
+        --
+        + getters/setters()
+    }
+    
+    class NotificationDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - type: String
+        - title: String
+        - message: String
+        - data: Map<String, Object>
+        - link: String
+        - isRead: Boolean
+        - priority: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class EmailRequest <<DTO>> DTO_COLOR {
+        - to: String
+        - subject: String
+        - htmlBody: String
+        - textBody: String
+        - templateName: String
+        - templateData: Map<String, Object>
+        - fromEmail: String
+        - fromName: String
+        --
+        + validate(): void
+    }
+    
+    class PushNotificationRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - title: String
+        - body: String
+        - data: Map<String, Object>
+        - imageUrl: String
+        - clickAction: String
+        - sound: String
+        --
+        + validate(): void
+    }
+    
+    class NotificationPreferencesDTO <<DTO>> DTO_COLOR {
+        - userId: Long
+        - emailEnabled: Boolean
+        - pushEnabled: Boolean
+        - jobAlertsEnabled: Boolean
+        - learningRemindersEnabled: Boolean
+        - jobAlertFrequency: String
+        - learningReminderTime: String
+        --
+        + getters/setters()
+    }
+    
+    class RegisterDeviceRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - deviceType: String
+        - fcmToken: String
+        - deviceName: String
+        - osVersion: String
+        - appVersion: String
+        --
+        + validate(): void
+    }
+    
+    class WebhookEventDTO <<DTO>> DTO_COLOR {
+        - event: String
+        - email: String
+        - messageId: String
+        - timestamp: LocalDateTime
+        - url: String
+        - reason: String
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' PACKAGE: SERVICE
+' ============================================
+package "com.careernexus.notificationservice.service" <<Rectangle>> {
+    
+    interface NotificationService <<Service>> SERVICE_COLOR {
+        + sendNotification(request: SendNotificationRequest): SendNotificationResponse
+        + getUserNotifications(userId: Long): List<NotificationDTO>
+        + getUnreadNotifications(userId: Long): List<NotificationDTO>
+        + markAsRead(notificationId: Long): void
+        + markAllAsRead(userId: Long): void
+        + deleteNotification(notificationId: Long): void
+        + getUnreadCount(userId: Long): long
+    }
+    
+    class NotificationServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - notificationRepository: NotificationRepository
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        - preferencesRepository: UserNotificationPreferencesRepository
+        - emailService: EmailService
+        - pushNotificationService: PushNotificationService
+        - messageQueue: MessageQueue
+        --
+        + sendNotification(request: SendNotificationRequest): SendNotificationResponse
+        + getUserNotifications(userId: Long): List<NotificationDTO>
+        - checkUserPreferences(userId: Long, type: NotificationType): UserNotificationPreferences
+        - queueNotification(notification: Notification, channels: List): void
+        - processNotificationQueue(): void
+    }
+    
+    interface EmailService <<Service>> SERVICE_COLOR {
+        + sendEmail(request: EmailRequest): String
+        + sendTemplatedEmail(templateName: String, to: String, data: Map): String
+        + sendBulkEmail(requests: List<EmailRequest>): Map<String, String>
+    }
+    
+    class EmailServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - emailTemplateRepository: EmailTemplateRepository
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        - sendGridClient: SendGridClient
+        - templateEngine: TemplateEngine
+        --
+        + sendEmail(request: EmailRequest): String
+        + sendTemplatedEmail(templateName: String, to: String, data: Map): String
+        - renderTemplate(template: EmailTemplate, data: Map): EmailContent
+        - logDelivery(userId: Long, messageId: String, status: DeliveryStatus): void
+    }
+    
+    interface PushNotificationService <<Service>> SERVICE_COLOR {
+        + sendPushNotification(request: PushNotificationRequest): Map<String, String>
+        + sendToDevice(deviceToken: String, title: String, body: String, data: Map): String
+        + sendToMultipleDevices(tokens: List<String>, title: String, body: String): Map<String, String>
+    }
+    
+    class PushNotificationServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userDeviceRepository: UserDeviceRepository
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        - fcmClient: FirebaseCloudMessaging
+        --
+        + sendPushNotification(request: PushNotificationRequest): Map<String, String>
+        + sendToDevice(deviceToken: String, title: String, body: String, data: Map): String
+        - getUserDevices(userId: Long): List<UserDevice>
+        - buildFCMMessage(title: String, body: String, data: Map): Message
+        - logDelivery(userId: Long, token: String, messageId: String, status: DeliveryStatus): void
+    }
+    
+    interface NotificationPreferencesService <<Service>> SERVICE_COLOR {
+        + getUserPreferences(userId: Long): NotificationPreferencesDTO
+        + updatePreferences(userId: Long, preferences: NotificationPreferencesDTO): void
+        + createDefaultPreferences(userId: Long): void
+    }
+    
+    class NotificationPreferencesServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - preferencesRepository: UserNotificationPreferencesRepository
+        - preferencesMapper: PreferencesMapper
+        --
+        + getUserPreferences(userId: Long): NotificationPreferencesDTO
+        + updatePreferences(userId: Long, preferences: NotificationPreferencesDTO): void
+        + createDefaultPreferences(userId: Long): void
+    }
+    
+    interface DeviceService <<Service>> SERVICE_COLOR {
+        + registerDevice(request: RegisterDeviceRequest): void
+        + getUserDevices(userId: Long): List<UserDevice>
+        + deactivateDevice(deviceId: Long): void
+        + updateDeviceToken(deviceId: Long, newToken: String): void
+    }
+    
+    class DeviceServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - userDeviceRepository: UserDeviceRepository
+        --
+        + registerDevice(request: RegisterDeviceRequest): void
+        + getUserDevices(userId: Long): List<UserDevice>
+        - findExistingDevice(userId: Long, fcmToken: String): Optional<UserDevice>
+    }
+    
+    interface WebhookService <<Service>> SERVICE_COLOR {
+        + processSendGridWebhook(event: WebhookEventDTO): void
+        + processFCMWebhook(event: WebhookEventDTO): void
+        + updateDeliveryStatus(messageId: String, status: DeliveryStatus): void
+    }
+    
+    class WebhookServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        --
+        + processSendGridWebhook(event: WebhookEventDTO): void
+        + processFCMWebhook(event: WebhookEventDTO): void
+        - handleEmailOpened(event: WebhookEventDTO): void
+        - handleEmailClicked(event: WebhookEventDTO): void
+        - handleEmailBounced(event: WebhookEventDTO): void
+    }
+    
+    interface TemplateService <<Service>> SERVICE_COLOR {
+        + getTemplate(templateName: String): EmailTemplate
+        + createTemplate(template: EmailTemplate): void
+        + updateTemplate(templateName: String, template: EmailTemplate): void
+        + deleteTemplate(templateName: String): void
+        + getAllTemplates(): List<EmailTemplate>
+    }
+    
+    class TemplateServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - emailTemplateRepository: EmailTemplateRepository
+        --
+        + getTemplate(templateName: String): EmailTemplate
+        + createTemplate(template: EmailTemplate): void
+        - validateTemplate(template: EmailTemplate): void
+    }
+}
+
+' ============================================
+' PACKAGE: CONTROLLER
+' ============================================
+package "com.careernexus.notificationservice.controller" <<Rectangle>> {
+    
+    class NotificationController <<RestController>> CONTROLLER_COLOR {
+        - notificationService: NotificationService
+        --
+        + sendNotification(request: SendNotificationRequest): ResponseEntity<SendNotificationResponse>
+        + getUserNotifications(userId: Long): ResponseEntity<List<NotificationDTO>>
+        + getUnreadNotifications(userId: Long): ResponseEntity<List<NotificationDTO>>
+        + markAsRead(notificationId: Long): ResponseEntity<Void>
+        + markAllAsRead(userId: Long): ResponseEntity<Void>
+        + deleteNotification(notificationId: Long): ResponseEntity<Void>
+        + getUnreadCount(userId: Long): ResponseEntity<Long>
+    }
+    
+    class EmailController <<RestController>> CONTROLLER_COLOR {
+        - emailService: EmailService
+        --
+        + sendEmail(request: EmailRequest): ResponseEntity<String>
+        + sendTemplatedEmail(templateName: String, to: String, data: Map): ResponseEntity<String>
+    }
+    
+    class PushNotificationController <<RestController>> CONTROLLER_COLOR {
+        - pushNotificationService: PushNotificationService
+        --
+        + sendPushNotification(request: PushNotificationRequest): ResponseEntity<Map<String, String>>
+    }
+    
+    class NotificationPreferencesController <<RestController>> CONTROLLER_COLOR {
+        - preferencesService: NotificationPreferencesService
+        --
+        + getPreferences(userId: Long): ResponseEntity<NotificationPreferencesDTO>
+        + updatePreferences(userId: Long, preferences: NotificationPreferencesDTO): ResponseEntity<Void>
+    }
+    
+    class DeviceController <<RestController>> CONTROLLER_COLOR {
+        - deviceService: DeviceService
+        --
+        + registerDevice(request: RegisterDeviceRequest): ResponseEntity<Void>
+        + getUserDevices(userId: Long): ResponseEntity<List<UserDevice>>
+        + deactivateDevice(deviceId: Long): ResponseEntity<Void>
+    }
+    
+    class WebhookController <<RestController>> CONTROLLER_COLOR {
+        - webhookService: WebhookService
+        --
+        + handleSendGridWebhook(event: WebhookEventDTO): ResponseEntity<Void>
+        + handleFCMWebhook(event: WebhookEventDTO): ResponseEntity<Void>
+    }
+    
+    class TemplateController <<RestController>> CONTROLLER_COLOR {
+        - templateService: TemplateService
+        --
+        + getTemplate(templateName: String): ResponseEntity<EmailTemplate>
+        + createTemplate(template: EmailTemplate): ResponseEntity<Void>
+        + updateTemplate(templateName: String, template: EmailTemplate): ResponseEntity<Void>
+        + deleteTemplate(templateName: String): ResponseEntity<Void>
+        + getAllTemplates(): ResponseEntity<List<EmailTemplate>>
+    }
+}
+
+' ============================================
+' PACKAGE: EXCEPTION
+' ============================================
+package "com.careernexus.notificationservice.exception" <<Rectangle>> {
+    
+    class NotificationNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + NotificationNotFoundException(notificationId: Long)
+    }
+    
+    class EmailDeliveryException <<Exception>> EXCEPTION_COLOR {
+        + EmailDeliveryException(message: String, cause: Throwable)
+    }
+    
+    class PushNotificationException <<Exception>> EXCEPTION_COLOR {
+        + PushNotificationException(message: String, cause: Throwable)
+    }
+    
+    class TemplateNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + TemplateNotFoundException(templateName: String)
+    }
+    
+    class InvalidTemplateException <<Exception>> EXCEPTION_COLOR {
+        + InvalidTemplateException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleNotificationNotFoundException(ex: NotificationNotFoundException): ResponseEntity<ErrorResponse>
+        + handleEmailDeliveryException(ex: EmailDeliveryException): ResponseEntity<ErrorResponse>
+        + handlePushNotificationException(ex: PushNotificationException): ResponseEntity<ErrorResponse>
+    }
+}
+
+' ============================================
+' PACKAGE: UTIL
+' ============================================
+package "com.careernexus.notificationservice.util" <<Rectangle>> {
+    
+    class NotificationMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(notification: Notification): NotificationDTO
+        + toEntity(dto: NotificationDTO): Notification
+    }
+    
+    class PreferencesMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(preferences: UserNotificationPreferences): NotificationPreferencesDTO
+        + toEntity(dto: NotificationPreferencesDTO): UserNotificationPreferences
+    }
+    
+    class TemplateEngine <<Utility>> UTIL_COLOR {
+        + render(template: String, data: Map<String, Object>): String
+        + renderSubject(subjectTemplate: String, data: Map): String
+        + renderHtml(htmlTemplate: String, data: Map): String
+        + validateTemplate(template: String): boolean
+        - replacePlaceholders(template: String, data: Map): String
+    }
+    
+    class NotificationHelper <<Utility>> UTIL_COLOR {
+        + buildJobMatchNotification(userId: Long, jobData: Map): SendNotificationRequest
+        + buildPhaseCompletionNotification(userId: Long, phaseData: Map): SendNotificationRequest
+        + buildPasswordResetNotification(email: String, token: String): SendNotificationRequest
+    }
+}
+
+' ============================================
+' PACKAGE: CONFIG
+' ============================================
+package "com.careernexus.notificationservice.config" <<Rectangle>> {
+    
+    class SendGridConfig <<Configuration>> CONFIG_COLOR {
+        - apiKey: String
+        --
+        + sendGridClient(): SendGrid
+    }
+    
+    class FirebaseConfig <<Configuration>> CONFIG_COLOR {
+        - credentialsPath: String
+        --
+        + firebaseApp(): FirebaseApp
+        + firebaseMessaging(): FirebaseMessaging
+    }
+    
+    class MessageQueueConfig <<Configuration>> CONFIG_COLOR {
+        + rabbitTemplate(): RabbitTemplate
+        + notificationQueue(): Queue
+        + notificationExchange(): DirectExchange
+    }
+    
+    class ScheduledTasksConfig <<Configuration>> CONFIG_COLOR {
+        - notificationService: NotificationService
+        --
+        + cleanupOldNotifications(): void
+        + retryFailedDeliveries(): void
+    }
+}
+
+' ============================================
+' PACKAGE: MESSAGING
+' ============================================
+package "com.careernexus.notificationservice.messaging" <<Rectangle>> {
+    
+    class NotificationQueueConsumer <<Component>> CONFIG_COLOR {
+        - notificationService: NotificationService
+        - emailService: EmailService
+        - pushNotificationService: PushNotificationService
+        --
+        + consumeNotification(message: String): void
+        - processEmailNotification(notification: Notification): void
+        - processPushNotification(notification: Notification): void
+    }
+    
+    class NotificationQueueProducer <<Component>> CONFIG_COLOR {
+        - rabbitTemplate: RabbitTemplate
+        --
+        + publishNotification(notification: Notification, channels: List): void
+    }
+}
+
+' ============================================
+' PACKAGE: CLIENT
+' ============================================
+package "com.careernexus.notificationservice.client" <<Rectangle>> {
+    
+    class SendGridClient <<Component>> CONFIG_COLOR {
+        - sendGrid: SendGrid
+        --
+        + sendEmail(to: String, subject: String, content: String): String
+        + sendTemplatedEmail(to: String, templateId: String, data: Map): String
+    }
+    
+    class FirebaseCloudMessaging <<Component>> CONFIG_COLOR {
+        - firebaseMessaging: FirebaseMessaging
+        --
+        + sendToDevice(token: String, notification: Notification, data: Map): String
+        + sendToMultipleDevices(tokens: List<String>, notification: Notification): Map<String, String>
+        + subscribeToTopic(token: String, topic: String): void
+    }
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+' Entity relationships
+Notification "1" -- "0..*" NotificationDeliveryLog
+
+' Repository extends JpaRepository
+NotificationRepository --|> JpaRepository
+NotificationDeliveryLogRepository --|> JpaRepository
+UserNotificationPreferencesRepository --|> JpaRepository
+UserDeviceRepository --|> JpaRepository
+EmailTemplateRepository --|> JpaRepository
+
+' Service implementations
+NotificationServiceImpl ..|> NotificationService
+EmailServiceImpl ..|> EmailService
+PushNotificationServiceImpl ..|> PushNotificationService
+NotificationPreferencesServiceImpl ..|> NotificationPreferencesService
+DeviceServiceImpl ..|> DeviceService
+WebhookServiceImpl ..|> WebhookService
+TemplateServiceImpl ..|> TemplateService
+
+' Service dependencies
+NotificationServiceImpl --> NotificationRepository
+NotificationServiceImpl --> NotificationDeliveryLogRepository
+NotificationServiceImpl --> UserNotificationPreferencesRepository
+NotificationServiceImpl --> EmailService
+NotificationServiceImpl --> PushNotificationService
+NotificationServiceImpl --> NotificationQueueProducer
+
+EmailServiceImpl --> EmailTemplateRepository
+EmailServiceImpl --> NotificationDeliveryLogRepository
+EmailServiceImpl --> SendGridClient
+EmailServiceImpl --> TemplateEngine
+
+PushNotificationServiceImpl --> UserDeviceRepository
+PushNotificationServiceImpl --> NotificationDeliveryLogRepository
+PushNotificationServiceImpl --> FirebaseCloudMessaging
+
+NotificationPreferencesServiceImpl --> UserNotificationPreferencesRepository
+
+DeviceServiceImpl --> UserDeviceRepository
+
+WebhookServiceImpl --> NotificationDeliveryLogRepository
+
+TemplateServiceImpl --> EmailTemplateRepository
+
+' Controller dependencies
+NotificationController --> NotificationService
+EmailController --> EmailService
+PushNotificationController --> PushNotificationService
+NotificationPreferencesController --> NotificationPreferencesService
+DeviceController --> DeviceService
+WebhookController --> WebhookService
+TemplateController --> TemplateService
+
+' Messaging
+NotificationQueueConsumer --> NotificationService
+NotificationQueueConsumer --> EmailService
+NotificationQueueConsumer --> PushNotificationService
+NotificationQueueProducer --> "RabbitTemplate"
+
+note right of NotificationService
+  Core notification orchestrator:
+  1. Check user preferences
+  2. Queue to appropriate channels
+  3. Track delivery status
+  4. Handle retries
+end note
+
+note right of TemplateEngine
+  Mustache/Handlebars-style
+  template rendering with
+  variable substitution
+end note
+
+note right of WebhookService
+  Processes delivery webhooks
+  from SendGrid and FCM to
+  update delivery status
+end note
+
+@enduml

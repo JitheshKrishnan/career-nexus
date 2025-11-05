@@ -1,0 +1,772 @@
+@startuml Learning Suggester Service Class Diagram
+!define ENTITY_COLOR #E1F5FE
+!define REPOSITORY_COLOR #FFF9C4
+!define SERVICE_COLOR #F0F4C3
+!define CONTROLLER_COLOR #FFE0B2
+!define DTO_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+' ============================================
+' PACKAGE: MODEL (ENTITIES)
+' ============================================
+package "com.careernexus.learningservice.model" <<Rectangle>> {
+    
+    class Course <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - externalCourseId: String
+        - source: CourseSource
+        - title: String
+        - instructorName: String
+        - description: String
+        - thumbnailUrl: String
+        - courseUrl: String
+        - price: BigDecimal
+        - currency: String
+        - durationHours: BigDecimal
+        - difficultyLevel: DifficultyLevel
+        - rating: BigDecimal
+        - reviewCount: Integer
+        - enrollmentCount: Integer
+        - language: String
+        - hasCertificate: Boolean
+        - isFree: Boolean
+        - lastUpdated: LocalDate
+        - fetchedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isPopular(): boolean
+        + isHighlyRated(): boolean
+    }
+    
+    class CourseSkill <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - courseId: Long
+        - skillName: String
+        - isPrimary: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class SkillDependency <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - skillName: String
+        - prerequisiteSkill: String
+        - isRequired: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class LearningPath <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - targetRole: String
+        - title: String
+        - description: String
+        - totalPhases: Integer
+        - totalCourses: Integer
+        - estimatedDurationHours: BigDecimal
+        - difficultyLevel: DifficultyLevel
+        - status: PathStatus
+        - createdAt: LocalDateTime
+        - startedAt: LocalDateTime
+        - completedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isCompleted(): boolean
+        + isInProgress(): boolean
+        + startPath(): void
+        + completePath(): void
+    }
+    
+    class LearningPathMilestone <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - pathId: Long
+        - phaseNumber: Integer
+        - phaseName: String
+        - description: String
+        - estimatedDurationHours: BigDecimal
+        - primarySkill: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class LearningPathCourse <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - milestoneId: Long
+        - courseId: Long
+        - orderIndex: Integer
+        - isRequired: Boolean
+        --
+        + getters/setters()
+    }
+    
+    class LearningProgress <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - pathId: Long
+        - currentPhase: Integer
+        - completedPhases: Integer
+        - completedCourses: String
+        - totalTimeSpentHours: BigDecimal
+        - lastActivityAt: LocalDateTime
+        - createdAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + addCompletedCourse(courseId: String): void
+        + getCompletedCoursesList(): List<String>
+        + calculateProgressPercentage(): BigDecimal
+    }
+    
+    class CourseCompletionHistory <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - pathId: Long
+        - courseId: Long
+        - courseSource: CourseSource
+        - courseTitle: String
+        - completedAt: LocalDateTime
+        - certificateUrl: String
+        - timeSpentHours: BigDecimal
+        --
+        + getters/setters()
+    }
+    
+    class PhaseCompletionHistory <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - pathId: Long
+        - phaseId: Long
+        - phaseNumber: Integer
+        - phaseName: String
+        - completedAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class SkillGapAnalysis <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - targetRole: String
+        - currentSkills: String
+        - requiredSkills: String
+        - missingSkills: String
+        - skillGapsCount: Integer
+        - prioritySkills: String
+        - analyzedAt: LocalDateTime
+        --
+        + getters/setters()
+        + getCurrentSkillsList(): List<String>
+        + getRequiredSkillsList(): List<String>
+        + getMissingSkillsList(): List<String>
+        + getPrioritySkillsList(): List<String>
+    }
+    
+    enum CourseSource {
+        UDEMY
+        COURSERA
+        YOUTUBE
+        PLURALSIGHT
+        EDEX
+        OTHER
+    }
+    
+    enum DifficultyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+        ALL_LEVELS
+    }
+    
+    enum PathStatus {
+        NOT_STARTED
+        IN_PROGRESS
+        COMPLETED
+        ABANDONED
+    }
+}
+
+' ============================================
+' PACKAGE: REPOSITORY
+' ============================================
+package "com.careernexus.learningservice.repository" <<Rectangle>> {
+    
+    interface CourseRepository <<Repository>> REPOSITORY_COLOR {
+        + findByExternalCourseId(externalId: String): Optional<Course>
+        + findBySource(source: CourseSource): List<Course>
+        + findByDifficultyLevel(level: DifficultyLevel): List<Course>
+        + findFreeCoursesWithCertificate(): List<Course>
+        + findByIsFreeTrue(): List<Course>
+        + searchCourses(query: String): List<Course>
+        + findTopRatedCourses(limit: int): List<Course>
+        + findByRatingGreaterThan(rating: BigDecimal): List<Course>
+    }
+    
+    interface CourseSkillRepository <<Repository>> REPOSITORY_COLOR {
+        + findByCourseId(courseId: Long): List<CourseSkill>
+        + findBySkillName(skillName: String): List<CourseSkill>
+        + findPrimarySkillsByCourseId(courseId: Long): List<CourseSkill>
+        + findCoursesTeachingSkill(skillName: String): List<Long>
+    }
+    
+    interface SkillDependencyRepository <<Repository>> REPOSITORY_COLOR {
+        + findBySkillName(skillName: String): List<SkillDependency>
+        + findPrerequisites(skillName: String): List<String>
+        + findRequiredPrerequisites(skillName: String): List<String>
+    }
+    
+    interface LearningPathRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<LearningPath>
+        + findByUserIdAndStatus(userId: Long, status: PathStatus): List<LearningPath>
+        + findActivePathsByUserId(userId: Long): List<LearningPath>
+        + countByUserId(userId: Long): long
+    }
+    
+    interface LearningPathMilestoneRepository <<Repository>> REPOSITORY_COLOR {
+        + findByPathId(pathId: Long): List<LearningPathMilestone>
+        + findByPathIdOrderByPhaseNumber(pathId: Long): List<LearningPathMilestone>
+        + countByPathId(pathId: Long): long
+    }
+    
+    interface LearningPathCourseRepository <<Repository>> REPOSITORY_COLOR {
+        + findByMilestoneId(milestoneId: Long): List<LearningPathCourse>
+        + findByMilestoneIdOrderByOrderIndex(milestoneId: Long): List<LearningPathCourse>
+        + countByMilestoneId(milestoneId: Long): long
+    }
+    
+    interface LearningProgressRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<LearningProgress>
+        + findByUserIdAndPathId(userId: Long, pathId: Long): Optional<LearningProgress>
+        + findByPathId(pathId: Long): List<LearningProgress>
+    }
+    
+    interface CourseCompletionHistoryRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<CourseCompletionHistory>
+        + findByUserIdAndPathId(userId: Long, pathId: Long): List<CourseCompletionHistory>
+        + countByUserIdAndPathId(userId: Long, pathId: Long): long
+        + findRecentCompletions(userId: Long, limit: int): List<CourseCompletionHistory>
+    }
+    
+    interface PhaseCompletionHistoryRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<PhaseCompletionHistory>
+        + findByUserIdAndPathId(userId: Long, pathId: Long): List<PhaseCompletionHistory>
+    }
+    
+    interface SkillGapAnalysisRepository <<Repository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<SkillGapAnalysis>
+        + findByUserIdAndTargetRole(userId: Long, role: String): Optional<SkillGapAnalysis>
+        + findLatestAnalysis(userId: Long): Optional<SkillGapAnalysis>
+    }
+}
+
+' ============================================
+' PACKAGE: DTO
+' ============================================
+package "com.careernexus.learningservice.dto" <<Rectangle>> {
+    
+    class CourseDTO <<DTO>> DTO_COLOR {
+        - id: Long
+        - title: String
+        - instructorName: String
+        - source: String
+        - courseUrl: String
+        - price: BigDecimal
+        - durationHours: BigDecimal
+        - difficultyLevel: String
+        - rating: BigDecimal
+        - hasCertificate: Boolean
+        - isFree: Boolean
+        - skills: List<String>
+        --
+        + getters/setters()
+    }
+    
+    class CourseSearchRequest <<DTO>> DTO_COLOR {
+        - skillName: String
+        - source: String
+        - difficultyLevel: String
+        - isFree: Boolean
+        - hasCertificate: Boolean
+        - maxPrice: BigDecimal
+        - minRating: BigDecimal
+        --
+        + validate(): void
+    }
+    
+    class CourseRecommendationRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - skillGaps: List<String>
+        - difficultyLevel: String
+        - preferFree: Boolean
+        - limit: Integer
+        --
+        + validate(): void
+    }
+    
+    class CourseRecommendationResponse <<DTO>> DTO_COLOR {
+        - courses: List<CourseDTO>
+        - totalCount: Integer
+        - recommendationReason: Map<Long, String>
+        --
+        + getters/setters()
+    }
+    
+    class SkillGapAnalysisRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - targetRole: String
+        - targetJobId: Long
+        --
+        + validate(): void
+    }
+    
+    class SkillGapAnalysisResponse <<DTO>> DTO_COLOR {
+        - currentSkills: List<String>
+        - requiredSkills: List<String>
+        - missingSkills: List<SkillGapDTO>
+        - skillGapsCount: Integer
+        - matchPercentage: BigDecimal
+        --
+        + getters/setters()
+    }
+    
+    class SkillGapDTO <<DTO>> DTO_COLOR {
+        - skillName: String
+        - priority: String
+        - hasPrerequisites: Boolean
+        - prerequisites: List<String>
+        - recommendedCourses: List<CourseDTO>
+        --
+        + getters/setters()
+    }
+    
+    class LearningPathRequest <<DTO>> DTO_COLOR {
+        - userId: Long
+        - targetRole: String
+        - skillGaps: List<String>
+        - timeAvailablePerWeek: Integer
+        - preferredSources: List<String>
+        --
+        + validate(): void
+    }
+    
+    class LearningPathResponse <<DTO>> DTO_COLOR {
+        - pathId: Long
+        - title: String
+        - description: String
+        - totalPhases: Integer
+        - totalCourses: Integer
+        - estimatedDurationHours: BigDecimal
+        - phases: List<PhaseDTO>
+        --
+        + getters/setters()
+    }
+    
+    class PhaseDTO <<DTO>> DTO_COLOR {
+        - phaseNumber: Integer
+        - phaseName: String
+        - description: String
+        - primarySkill: String
+        - estimatedDurationHours: BigDecimal
+        - courses: List<CourseDTO>
+        --
+        + getters/setters()
+    }
+    
+    class LearningProgressDTO <<DTO>> DTO_COLOR {
+        - pathId: Long
+        - pathTitle: String
+        - currentPhase: Integer
+        - totalPhases: Integer
+        - completedCourses: Integer
+        - totalCourses: Integer
+        - completionPercentage: BigDecimal
+        - timeSpentHours: BigDecimal
+        - estimatedTimeRemaining: BigDecimal
+        - lastActivityAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class CompleteCourseRequest <<DTO>> DTO_COLOR {
+        - courseId: String
+        - phaseId: Long
+        - completionDate: LocalDate
+        - certificateUrl: String
+        - timeSpentHours: BigDecimal
+        --
+        + validate(): void
+    }
+    
+    class CompleteCourseResponse <<DTO>> DTO_COLOR {
+        - success: Boolean
+        - courseCompleted: Boolean
+        - phaseCompleted: Boolean
+        - pathCompleted: Boolean
+        - progress: LearningProgressDTO
+        - skillAdded: String
+        - message: String
+        --
+        + getters/setters()
+    }
+}
+
+' ============================================
+' PACKAGE: SERVICE
+' ============================================
+package "com.careernexus.learningservice.service" <<Rectangle>> {
+    
+    interface CourseService <<Service>> SERVICE_COLOR {
+        + getCourseById(courseId: Long): CourseDTO
+        + searchCourses(request: CourseSearchRequest): List<CourseDTO>
+        + getCoursesForSkill(skillName: String): List<CourseDTO>
+        + getTopRatedCourses(limit: int): List<CourseDTO>
+        + getFreeCourses(): List<CourseDTO>
+    }
+    
+    class CourseServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - courseRepository: CourseRepository
+        - courseSkillRepository: CourseSkillRepository
+        - courseMapper: CourseMapper
+        --
+        + getCourseById(courseId: Long): CourseDTO
+        + searchCourses(request: CourseSearchRequest): List<CourseDTO>
+        - buildSearchCriteria(request: CourseSearchRequest): Specification
+    }
+    
+    interface CourseScraperService <<Service>> SERVICE_COLOR {
+        + scrapeCourses(source: CourseSource): List<Course>
+        + scrapeUdemyCourses(skillName: String): List<Course>
+        + scrapeYouTubeCourses(skillName: String): List<Course>
+        + parseCourseData(html: String): Course
+    }
+    
+    class CourseScraperServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - courseRepository: CourseRepository
+        - courseSkillRepository: CourseSkillRepository
+        - restTemplate: RestTemplate
+        --
+        + scrapeCourses(source: CourseSource): List<Course>
+        + scrapeUdemyCourses(skillName: String): List<Course>
+        - extractSkillsFromDescription(description: String): List<String>
+    }
+    
+    interface SkillGapAnalysisService <<Service>> SERVICE_COLOR {
+        + analyzeSkillGaps(request: SkillGapAnalysisRequest): SkillGapAnalysisResponse
+        + getLatestAnalysis(userId: Long): SkillGapAnalysisResponse
+        + identifyMissingSkills(userSkills: List<String>, requiredSkills: List<String>): List<String>
+        + prioritizeSkills(missingSkills: List<String>): List<SkillGapDTO>
+    }
+    
+    class SkillGapAnalysisServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - analysisRepository: SkillGapAnalysisRepository
+        - skillDependencyRepository: SkillDependencyRepository
+        - resumeServiceClient: ResumeServiceClient
+        - jobMatcherServiceClient: JobMatcherServiceClient
+        - courseService: CourseService
+        --
+        + analyzeSkillGaps(request: SkillGapAnalysisRequest): SkillGapAnalysisResponse
+        - getUserSkills(userId: Long): List<String>
+        - getRequiredSkills(targetRole: String): List<String>
+        - resolveSkillDependencies(skill: String): List<String>
+        - prioritizeByDependencies(skills: List<String>): List<String>
+    }
+    
+    interface CourseRecommendationService <<Service>> SERVICE_COLOR {
+        + recommendCourses(request: CourseRecommendationRequest): CourseRecommendationResponse
+        + recommendCoursesForSkill(skillName: String, filters: Map): List<CourseDTO>
+        + getPersonalizedRecommendations(userId: Long): List<CourseDTO>
+    }
+    
+    class CourseRecommendationServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - courseRepository: CourseRepository
+        - courseSkillRepository: CourseSkillRepository
+        - skillGapAnalysisService: SkillGapAnalysisService
+        - recommendationEngine: RecommendationEngine
+        --
+        + recommendCourses(request: CourseRecommendationRequest): CourseRecommendationResponse
+        - rankCourses(courses: List<Course>, criteria: Map): List<CourseDTO>
+        - filterByUserPreferences(courses: List<Course>, userId: Long): List<Course>
+    }
+    
+    interface LearningPathService <<Service>> SERVICE_COLOR {
+        + generateLearningPath(request: LearningPathRequest): LearningPathResponse
+        + getLearningPath(pathId: Long): LearningPathResponse
+        + getUserLearningPaths(userId: Long): List<LearningPathResponse>
+        + deleteLearningPath(pathId: Long): void
+    }
+    
+    class LearningPathServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - learningPathRepository: LearningPathRepository
+        - milestoneRepository: LearningPathMilestoneRepository
+        - pathCourseRepository: LearningPathCourseRepository
+        - skillGapAnalysisService: SkillGapAnalysisService
+        - courseRecommendationService: CourseRecommendationService
+        - skillDependencyRepository: SkillDependencyRepository
+        --
+        + generateLearningPath(request: LearningPathRequest): LearningPathResponse
+        - createPhases(skills: List<String>): List<PhaseDTO>
+        - assignCoursesToPhases(phases: List<Phase>): void
+        - calculateEstimatedDuration(courses: List<Course>): BigDecimal
+        - resolveSkillOrder(skills: List<String>): List<String>
+    }
+    
+    interface LearningProgressService <<Service>> SERVICE_COLOR {
+        + getProgress(userId: Long, pathId: Long): LearningProgressDTO
+        + completeCourse(userId: Long, pathId: Long, request: CompleteCourseRequest): CompleteCourseResponse
+        + updateProgress(userId: Long, pathId: Long): void
+        + getUserOverallProgress(userId: Long): Map<String, Object>
+    }
+    
+    class LearningProgressServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - progressRepository: LearningProgressRepository
+        - courseCompletionRepository: CourseCompletionHistoryRepository
+        - phaseCompletionRepository: PhaseCompletionHistoryRepository
+        - learningPathRepository: LearningPathRepository
+        - resumeServiceClient: ResumeServiceClient
+        - notificationServiceClient: NotificationServiceClient
+        --
+        + completeCourse(userId: Long, pathId: Long, request: CompleteCourseRequest): CompleteCourseResponse
+        - checkPhaseCompletion(userId: Long, pathId: Long, phaseId: Long): boolean
+        - checkPathCompletion(userId: Long, pathId: Long): boolean
+        - addSkillToResume(userId: Long, skillName: String, certificateUrl: String): void
+        - sendCompletionNotification(userId: Long, phaseName: String, skillAdded: String): void
+        - calculateProgressPercentage(progress: LearningProgress, path: LearningPath): BigDecimal
+    }
+}
+
+' ============================================
+' PACKAGE: CONTROLLER
+' ============================================
+package "com.careernexus.learningservice.controller" <<Rectangle>> {
+    
+    class CourseController <<RestController>> CONTROLLER_COLOR {
+        - courseService: CourseService
+        --
+        + getCourse(courseId: Long): ResponseEntity<CourseDTO>
+        + searchCourses(request: CourseSearchRequest): ResponseEntity<List<CourseDTO>>
+        + getCoursesForSkill(skillName: String): ResponseEntity<List<CourseDTO>>
+        + getTopRatedCourses(limit: Integer): ResponseEntity<List<CourseDTO>>
+    }
+    
+    class SkillGapController <<RestController>> CONTROLLER_COLOR {
+        - skillGapAnalysisService: SkillGapAnalysisService
+        --
+        + analyzeSkillGaps(request: SkillGapAnalysisRequest): ResponseEntity<SkillGapAnalysisResponse>
+        + getLatestAnalysis(userId: Long): ResponseEntity<SkillGapAnalysisResponse>
+    }
+    
+    class CourseRecommendationController <<RestController>> CONTROLLER_COLOR {
+        - recommendationService: CourseRecommendationService
+        --
+        + recommendCourses(request: CourseRecommendationRequest): ResponseEntity<CourseRecommendationResponse>
+        + getPersonalizedRecommendations(userId: Long): ResponseEntity<List<CourseDTO>>
+    }
+    
+    class LearningPathController <<RestController>> CONTROLLER_COLOR {
+        - learningPathService: LearningPathService
+        --
+        + generateLearningPath(request: LearningPathRequest): ResponseEntity<LearningPathResponse>
+        + getLearningPath(pathId: Long): ResponseEntity<LearningPathResponse>
+        + getUserPaths(userId: Long): ResponseEntity<List<LearningPathResponse>>
+        + deletePath(pathId: Long): ResponseEntity<Void>
+    }
+    
+    class LearningProgressController <<RestController>> CONTROLLER_COLOR {
+        - progressService: LearningProgressService
+        --
+        + getProgress(userId: Long, pathId: Long): ResponseEntity<LearningProgressDTO>
+        + completeCourse(userId: Long, pathId: Long, request: CompleteCourseRequest): ResponseEntity<CompleteCourseResponse>
+        + getUserOverallProgress(userId: Long): ResponseEntity<Map<String, Object>>
+    }
+}
+
+' ============================================
+' PACKAGE: EXCEPTION
+' ============================================
+package "com.careernexus.learningservice.exception" <<Rectangle>> {
+    
+    class CourseNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + CourseNotFoundException(courseId: Long)
+    }
+    
+    class LearningPathNotFoundException <<Exception>> EXCEPTION_COLOR {
+        + LearningPathNotFoundException(pathId: Long)
+    }
+    
+    class InvalidSkillGapAnalysisException <<Exception>> EXCEPTION_COLOR {
+        + InvalidSkillGapAnalysisException(message: String)
+    }
+    
+    class CourseCompletionException <<Exception>> EXCEPTION_COLOR {
+        + CourseCompletionException(message: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR {
+        + handleCourseNotFoundException(ex: CourseNotFoundException): ResponseEntity<ErrorResponse>
+        + handleLearningPathNotFoundException(ex: LearningPathNotFoundException): ResponseEntity<ErrorResponse>
+    }
+}
+
+' ============================================
+' PACKAGE: UTIL
+' ============================================
+package "com.careernexus.learningservice.util" <<Rectangle>> {
+    
+    class CourseMapper <<Mapper>> UTIL_COLOR {
+        + toDTO(course: Course): CourseDTO
+        + toEntity(dto: CourseDTO): Course
+    }
+    
+    class LearningPathMapper <<Mapper>> UTIL_COLOR {
+        + toResponse(path: LearningPath, milestones: List): LearningPathResponse
+        + toProgressDTO(progress: LearningProgress, path: LearningPath): LearningProgressDTO
+    }
+    
+    class SkillDependencyResolver <<Utility>> UTIL_COLOR {
+        + resolvePrerequisites(skill: String): List<String>
+        + orderSkillsByDependency(skills: List<String>): List<String>
+        + hasCyclicDependency(skill: String): boolean
+        + buildDependencyGraph(skills: List<String>): Map<String, List<String>>
+    }
+    
+    class RecommendationEngine <<Utility>> UTIL_COLOR {
+        + rankCourses(courses: List<Course>, criteria: Map): List<Course>
+        + calculateCourseScore(course: Course, userPreferences: Map): BigDecimal
+        + filterByRelevance(courses: List<Course>, skillGaps: List): List<Course>
+    }
+    
+    class ProgressCalculator <<Utility>> UTIL_COLOR {
+        + calculateCompletionPercentage(completed: int, total: int): BigDecimal
+        + calculateTimeRemaining(spent: BigDecimal, total: BigDecimal): BigDecimal
+        + estimateCompletionDate(hoursRemaining: BigDecimal, hoursPerWeek: int): LocalDate
+    }
+}
+
+' ============================================
+' PACKAGE: CONFIG
+' ============================================
+package "com.careernexus.learningservice.config" <<Rectangle>> {
+    
+    class ScheduledTasksConfig <<Configuration>> CONFIG_COLOR {
+        - courseScraperService: CourseScraperService
+        --
+        + scrapeCoursesPeriodically(): void
+        + refreshCourseRatings(): void
+    }
+    
+    class CacheConfig <<Configuration>> CONFIG_COLOR {
+        + cacheManager(): CacheManager
+    }
+}
+
+' ============================================
+' PACKAGE: CLIENT
+' ============================================
+package "com.careernexus.learningservice.client" <<Rectangle>> {
+    
+    interface ResumeServiceClient <<FeignClient>> CONFIG_COLOR {
+        + getUserSkills(userId: Long): List<SkillDTO>
+        + addSkillToResume(userId: Long, skill: AddSkillRequest): void
+    }
+    
+    interface JobMatcherServiceClient <<FeignClient>> CONFIG_COLOR {
+        + getJobRequirements(jobId: Long): List<SkillDTO>
+        + getRoleSkillRequirements(role: String): List<SkillDTO>
+    }
+    
+    interface NotificationServiceClient <<FeignClient>> CONFIG_COLOR {
+        + sendNotification(request: NotificationRequest): void
+    }
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+' Entity relationships
+Course "1" -- "0..*" CourseSkill
+LearningPath "1" -- "0..*" LearningPathMilestone
+LearningPathMilestone "1" -- "0..*" LearningPathCourse
+LearningPath "1" -- "0..1" LearningProgress
+LearningPath "1" -- "0..*" CourseCompletionHistory
+LearningPath "1" -- "0..*" PhaseCompletionHistory
+
+' Repository extends JpaRepository
+CourseRepository --|> JpaRepository
+CourseSkillRepository --|> JpaRepository
+SkillDependencyRepository --|> JpaRepository
+LearningPathRepository --|> JpaRepository
+LearningPathMilestoneRepository --|> JpaRepository
+LearningPathCourseRepository --|> JpaRepository
+LearningProgressRepository --|> JpaRepository
+CourseCompletionHistoryRepository --|> JpaRepository
+PhaseCompletionHistoryRepository --|> JpaRepository
+SkillGapAnalysisRepository --|> JpaRepository
+
+' Service implementations
+CourseServiceImpl ..|> CourseService
+CourseScraperServiceImpl ..|> CourseScraperService
+SkillGapAnalysisServiceImpl ..|> SkillGapAnalysisService
+CourseRecommendationServiceImpl ..|> CourseRecommendationService
+LearningPathServiceImpl ..|> LearningPathService
+LearningProgressServiceImpl ..|> LearningProgressService
+
+' Service dependencies
+CourseServiceImpl --> CourseRepository
+CourseServiceImpl --> CourseSkillRepository
+
+SkillGapAnalysisServiceImpl --> SkillGapAnalysisRepository
+SkillGapAnalysisServiceImpl --> SkillDependencyRepository
+SkillGapAnalysisServiceImpl --> ResumeServiceClient
+SkillGapAnalysisServiceImpl --> JobMatcherServiceClient
+
+CourseRecommendationServiceImpl --> CourseRepository
+CourseRecommendationServiceImpl --> SkillGapAnalysisService
+CourseRecommendationServiceImpl --> RecommendationEngine
+
+LearningPathServiceImpl --> LearningPathRepository
+LearningPathServiceImpl --> LearningPathMilestoneRepository
+LearningPathServiceImpl --> LearningPathCourseRepository
+LearningPathServiceImpl --> SkillGapAnalysisService
+LearningPathServiceImpl --> SkillDependencyResolver
+
+LearningProgressServiceImpl --> LearningProgressRepository
+LearningProgressServiceImpl --> CourseCompletionHistoryRepository
+LearningProgressServiceImpl --> PhaseCompletionHistoryRepository
+LearningProgressServiceImpl --> ResumeServiceClient
+LearningProgressServiceImpl --> NotificationServiceClient
+
+' Controller dependencies
+CourseController --> CourseService
+SkillGapController --> SkillGapAnalysisService
+CourseRecommendationController --> CourseRecommendationService
+LearningPathController --> LearningPathService
+LearningProgressController --> LearningProgressService
+
+note right of LearningPathService
+  Core algorithm:
+  1. Analyze skill gaps
+  2. Resolve dependencies
+  3. Order by priority
+  4. Assign courses to phases
+  5. Generate structured path
+end note
+
+note right of SkillDependencyResolver
+  Topological sort for
+  skill dependency ordering
+  (e.g., Docker before Kubernetes)
+end note
+
+@enduml

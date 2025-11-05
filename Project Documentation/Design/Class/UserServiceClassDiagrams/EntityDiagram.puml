@@ -31,6 +31,13 @@ package "com.careernexus.userservice.model" <<Rectangle>> {
         + markEmailAsVerified(): void
         + updateLastLogin(): void
     }
+
+    interface Token <<Interface>> ENTITY_COLOR {
+        + getToken(): String
+        + getExpiresAt(): LocalDateTime
+        + getUserId(): Long
+        + isExpired(): boolean
+    }
     
     class EmailVerificationToken <<Entity>> ENTITY_COLOR {
         - id: Long
@@ -108,6 +115,10 @@ package "com.careernexus.userservice.model" <<Rectangle>> {
   User "1" -- "0..*" RefreshToken : has
   User "1" -- "1" UserPreferences : has
   User "1" -- "0..*" JwtBlacklist : has
+
+  Token <|.. EmailVerificationToken
+  Token <|.. PasswordResetToken
+  Token <|.. RefreshToken
 
 note right of User
 Main entity representing

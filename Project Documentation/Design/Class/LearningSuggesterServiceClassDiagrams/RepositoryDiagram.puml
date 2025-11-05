@@ -1,0 +1,159 @@
+@startuml Learning Service - Repository Package
+
+!define REPOSITORY_COLOR #FFF9C4
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Learning Service - Repository Package (Data Access Layer)
+
+package "com.careernexus.learningservice.repository" {
+    
+    interface CourseRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByExternalCourseId(externalId: String): Optional<Course>
+        + findBySource(source: CourseSource): List<Course>
+        + findByDifficultyLevel(level: DifficultyLevel): List<Course>
+        + findFreeCoursesWithCertificate(): List<Course>
+        + findByIsFreeTrue(): List<Course>
+        + searchCourses(query: String): List<Course>
+        + findTopRatedCourses(limit: int): List<Course>
+        + findByRatingGreaterThan(rating: BigDecimal): List<Course>
+        + findBySourceAndDifficultyLevel(source: CourseSource, level: DifficultyLevel): List<Course>
+        + countBySource(source: CourseSource): long
+        --
+        @Query("SELECT c FROM Course c WHERE c.isFree = true AND c.hasCertificate = true")
+        @Query("SELECT c FROM Course c WHERE c.title LIKE %:query% OR c.description LIKE %:query%")
+        @Query("SELECT c FROM Course c ORDER BY c.rating DESC LIMIT :limit")
+    }
+    
+    interface CourseSkillRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByCourseId(courseId: Long): List<CourseSkill>
+        + findBySkillName(skillName: String): List<CourseSkill>
+        + findPrimarySkillsByCourseId(courseId: Long): List<CourseSkill>
+        + findCoursesTeachingSkill(skillName: String): List<Long>
+        + existsByCourseIdAndSkillName(courseId: Long, skillName: String): boolean
+        + deleteByCourseId(courseId: Long): void
+        --
+        @Query("SELECT cs FROM CourseSkill cs WHERE cs.isPrimary = true AND cs.courseId = :courseId")
+        @Query("SELECT cs.courseId FROM CourseSkill cs WHERE cs.skillName = :skillName")
+    }
+    
+    interface SkillDependencyRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findBySkillName(skillName: String): List<SkillDependency>
+        + findPrerequisites(skillName: String): List<String>
+        + findRequiredPrerequisites(skillName: String): List<String>
+        + existsBySkillNameAndPrerequisiteSkill(skill: String, prerequisite: String): boolean
+        + findAllPrerequisitesRecursive(skillName: String): List<String>
+        --
+        @Query("SELECT sd.prerequisiteSkill FROM SkillDependency sd WHERE sd.skillName = :skillName")
+        @Query("SELECT sd.prerequisiteSkill FROM SkillDependency sd WHERE sd.skillName = :skillName AND sd.isRequired = true")
+    }
+    
+    interface LearningPathRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<LearningPath>
+        + findByUserIdAndStatus(userId: Long, status: PathStatus): List<LearningPath>
+        + findActivePathsByUserId(userId: Long): List<LearningPath>
+        + countByUserId(userId: Long): long
+        + findByUserIdAndTargetRole(userId: Long, role: String): Optional<LearningPath>
+        + deleteByUserId(userId: Long): void
+        --
+        @Query("SELECT lp FROM LearningPath lp WHERE lp.userId = :userId AND lp.status = 'IN_PROGRESS'")
+    }
+    
+    interface LearningPathMilestoneRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByPathId(pathId: Long): List<LearningPathMilestone>
+        + findByPathIdOrderByPhaseNumber(pathId: Long): List<LearningPathMilestone>
+        + countByPathId(pathId: Long): long
+        + findByPathIdAndPhaseNumber(pathId: Long, phaseNumber: int): Optional<LearningPathMilestone>
+        + deleteByPathId(pathId: Long): void
+    }
+    
+    interface LearningPathCourseRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByMilestoneId(milestoneId: Long): List<LearningPathCourse>
+        + findByMilestoneIdOrderByOrderIndex(milestoneId: Long): List<LearningPathCourse>
+        + countByMilestoneId(milestoneId: Long): long
+        + existsByMilestoneIdAndCourseId(milestoneId: Long, courseId: Long): boolean
+        + deleteByMilestoneId(milestoneId: Long): void
+    }
+    
+    interface LearningProgressRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<LearningProgress>
+        + findByUserIdAndPathId(userId: Long, pathId: Long): Optional<LearningProgress>
+        + findByPathId(pathId: Long): List<LearningProgress>
+        + existsByUserIdAndPathId(userId: Long, pathId: Long): boolean
+        + findActiveProgress(userId: Long): List<LearningProgress>
+        --
+        @Query("SELECT lp FROM LearningProgress lp WHERE lp.userId = :userId AND lp.lastActivityAt > :since")
+    }
+    
+    interface CourseCompletionHistoryRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<CourseCompletionHistory>
+        + findByUserIdAndPathId(userId: Long, pathId: Long): List<CourseCompletionHistory>
+        + countByUserIdAndPathId(userId: Long, pathId: Long): long
+        + findRecentCompletions(userId: Long, limit: int): List<CourseCompletionHistory>
+        + findByUserIdOrderByCompletedAtDesc(userId: Long): List<CourseCompletionHistory>
+        + existsByUserIdAndCourseId(userId: Long, courseId: Long): boolean
+        --
+        @Query("SELECT cch FROM CourseCompletionHistory cch WHERE cch.userId = :userId ORDER BY cch.completedAt DESC LIMIT :limit")
+    }
+    
+    interface PhaseCompletionHistoryRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<PhaseCompletionHistory>
+        + findByUserIdAndPathId(userId: Long, pathId: Long): List<PhaseCompletionHistory>
+        + countByUserIdAndPathId(userId: Long, pathId: Long): long
+        + existsByUserIdAndPhaseId(userId: Long, phaseId: Long): boolean
+        + findByUserIdOrderByCompletedAtDesc(userId: Long): List<PhaseCompletionHistory>
+    }
+    
+    interface SkillGapAnalysisRepository <<JpaRepository>> REPOSITORY_COLOR {
+        + findByUserId(userId: Long): List<SkillGapAnalysis>
+        + findByUserIdAndTargetRole(userId: Long, role: String): Optional<SkillGapAnalysis>
+        + findLatestAnalysis(userId: Long): Optional<SkillGapAnalysis>
+        + deleteByUserId(userId: Long): void
+        + findByUserIdOrderByAnalyzedAtDesc(userId: Long): List<SkillGapAnalysis>
+        --
+        @Query("SELECT sga FROM SkillGapAnalysis sga WHERE sga.userId = :userId ORDER BY sga.analyzedAt DESC LIMIT 1")
+    }
+}
+
+' Inheritance from Spring Data JPA
+interface JpaRepository<T, ID> REPOSITORY_COLOR {
+    + save(entity: T): T
+    + findById(id: ID): Optional<T>
+    + findAll(): List<T>
+    + delete(entity: T): void
+    + count(): long
+}
+
+CourseRepository --|> JpaRepository
+CourseSkillRepository --|> JpaRepository
+SkillDependencyRepository --|> JpaRepository
+LearningPathRepository --|> JpaRepository
+LearningPathMilestoneRepository --|> JpaRepository
+LearningPathCourseRepository --|> JpaRepository
+LearningProgressRepository --|> JpaRepository
+CourseCompletionHistoryRepository --|> JpaRepository
+PhaseCompletionHistoryRepository --|> JpaRepository
+SkillGapAnalysisRepository --|> JpaRepository
+
+note top of CourseRepository
+  @Repository
+  Main repository for course data
+  Supports custom queries and search
+end note
+
+note top of LearningPathRepository
+  @Repository
+  Manages user learning paths
+  with status filtering
+end note
+
+note bottom of SkillDependencyRepository
+  @Repository
+  Handles skill prerequisites
+  Supports recursive dependency resolution
+end note
+
+@enduml

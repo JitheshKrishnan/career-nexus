@@ -1,0 +1,200 @@
+@startuml Notification Service - Controller, Util, Config & Messaging
+
+!define CLIENT_COLOR #E1F5FE
+!define MESSAGING_COLOR #FFF9C4
+!define DTO_COLOR #E1BEE7
+!define EXCEPTION_COLOR #FFCDD2
+!define UTIL_COLOR #C8E6C9
+!define CONFIG_COLOR #D1C4E9
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+
+title Notification Service - Util, Config & Messaging Packages
+
+package "com.careernexus.notificationservice.util" {
+    
+    class NotificationMapper <<Mapper>> UTIL_COLOR{
+        + toDTO(notification: Notification): NotificationDTO
+        + toEntity(dto: NotificationDTO): Notification
+        + toDTOList(notifications: List<Notification>): List<NotificationDTO>
+    }
+    
+    class TemplateEngine <<Utility>> UTIL_COLOR{
+        + render(template: String, data: Map<String, Object>): String
+        + renderSubject(subjectTemplate: String, data: Map): String
+        + renderHtml(htmlTemplate: String, data: Map): String
+        + validateTemplate(template: String): boolean
+        - replacePlaceholders(template: String, data: Map): String
+        - extractVariables(template: String): List<String>
+        --
+        **Template Syntax:**
+        {{variable}} - Simple variable
+        {{#if condition}} ... {{/if}} - Conditional
+        {{#each items}} ... {{/each}} - Loop
+    }
+    
+    class NotificationHelper <<Utility>> UTIL_COLOR{
+        + buildJobMatchNotification(userId: Long, jobData: Map): SendNotificationRequest
+        + buildPhaseCompletionNotification(userId: Long, phaseData: Map): SendNotificationRequest
+        + buildPasswordResetNotification(email: String, token: String): SendNotificationRequest
+        + buildWelcomeNotification(userId: Long, name: String): SendNotificationRequest
+    }
+}
+
+package "com.careernexus.notificationservice.config" {
+    
+    class SendGridConfig <<Configuration>> CONFIG_COLOR{
+        - apiKey: String
+        --
+        + sendGridClient(): SendGrid
+        --
+        @Bean
+        @Value("${sendgrid.api-key}")
+    }
+    
+    class FirebaseConfig <<Configuration>> CONFIG_COLOR{
+        - credentialsPath: String
+        --
+        + firebaseApp(): FirebaseApp
+        + firebaseMessaging(): FirebaseMessaging
+        --
+        @Bean
+        Uses service account JSON
+    }
+    
+    class MessageQueueConfig <<Configuration>> CONFIG_COLOR{
+        + rabbitTemplate(): RabbitTemplate
+        + notificationQueue(): Queue
+        + notificationExchange(): DirectExchange
+        + binding(): Binding
+        --
+        **Queue Configuration:**
+        - Queue: notification.queue
+        - Exchange: notification.exchange
+        - Routing Key: notification.route
+    }
+    
+    class ScheduledTasksConfig <<Configuration>> CONFIG_COLOR{
+        - notificationService: NotificationService
+        - deliveryLogRepository: NotificationDeliveryLogRepository
+        --
+        + cleanupOldNotifications(): void
+        + retryFailedDeliveries(): void
+        + deactivateExpiredDevices(): void
+        --
+        @Scheduled(cron = "0 0 3 * * *") // 3 AM daily
+    }
+}
+
+package "com.careernexus.notificationservice.messaging" {
+    
+    class NotificationQueueConsumer <<Component>> MESSAGING_COLOR{
+        - notificationService: NotificationService
+        - emailService: EmailService
+        - pushNotificationService: PushNotificationService
+        --
+        + consumeNotification(message: String): void
+        - processEmailNotification(notification: Notification): void
+        - processPushNotification(notification: Notification): void
+        - handleProcessingError(message: String, exception: Exception): void
+        --
+        @RabbitListener(queues = "notification.queue")
+    }
+    
+    class NotificationQueueProducer <<Component>> MESSAGING_COLOR{
+        - rabbitTemplate: RabbitTemplate
+        - objectMapper: ObjectMapper
+        --
+        + publishNotification(notification: Notification, channels: List): void
+        + publishBulkNotifications(notifications: List): void
+        - serializeMessage(notification: Notification): String
+    }
+}
+
+package "com.careernexus.notificationservice.client" {
+    
+    class SendGridClient <<Component>> CLIENT_COLOR{
+        - sendGrid: SendGrid
+        --
+        + sendEmail(to: String, subject: String, content: String): String
+        + sendTemplatedEmail(to: String, templateId: String, data: Map): String
+        + sendBulkEmails(requests: List): Map<String, String>
+        - buildMail(to: String, subject: String, content: String): Mail
+    }
+    
+    class FirebaseCloudMessaging <<Component>> CLIENT_COLOR{
+        - firebaseMessaging: FirebaseMessaging
+        --
+        + sendToDevice(token: String, notification: Notification, data: Map): String
+        + sendToMultipleDevices(tokens: List<String>, notification: Notification): Map<String, String>
+        + subscribeToTopic(token: String, topic: String): void
+        + unsubscribeFromTopic(token: String, topic: String): void
+        - buildMessage(token: String, title: String, body: String, data: Map): Message
+    }
+}
+
+package "com.careernexus.notificationservice.exception" {
+    
+    class NotificationNotFoundException <<Exception>> EXCEPTION_COLOR{
+        + NotificationNotFoundException(notificationId: Long)
+    }
+    
+    class EmailDeliveryException <<Exception>> EXCEPTION_COLOR{
+        + EmailDeliveryException(message: String, cause: Throwable)
+    }
+    
+    class PushNotificationException <<Exception>> EXCEPTION_COLOR{
+        + PushNotificationException(message: String, cause: Throwable)
+    }
+    
+    class TemplateNotFoundException <<Exception>> EXCEPTION_COLOR{
+        + TemplateNotFoundException(templateName: String)
+    }
+    
+    class GlobalExceptionHandler <<ControllerAdvice>> EXCEPTION_COLOR{
+        + handleNotificationNotFoundException(ex: NotificationNotFoundException): ResponseEntity<ErrorResponse>
+        + handleEmailDeliveryException(ex: EmailDeliveryException): ResponseEntity<ErrorResponse>
+        + handlePushNotificationException(ex: PushNotificationException): ResponseEntity<ErrorResponse>
+        + handleGenericException(ex: Exception): ResponseEntity<ErrorResponse>
+    }
+}
+
+' Relationships
+NotificationController --> NotificationService : uses
+EmailController --> EmailService : uses
+WebhookController --> WebhookService : uses
+NotificationQueueConsumer --> EmailService : uses
+NotificationQueueConsumer --> PushNotificationService : uses
+SendGridClient --> SendGrid : wraps
+FirebaseCloudMessaging --> FirebaseMessaging : wraps
+
+note top of NotificationQueueConsumer
+  @Component
+  Consumes messages from RabbitMQ
+  Processes notifications asynchronously
+  
+  Benefits:
+  - Non-blocking
+  - Retry on failure
+  - Load balancing
+end note
+
+note top of TemplateEngine
+  Simple template engine
+  for email rendering
+  
+  Supports Mustache-style
+  variable substitution
+end note
+
+note top of MessageQueueConfig
+  RabbitMQ configuration
+  for async notification processing
+  
+  Producer-Consumer pattern
+end note
+
+@enduml

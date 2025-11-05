@@ -1,0 +1,30 @@
+@startuml Resume Service Class Diagram
+
+!define CLIENT_COLOR #D1C4E9
+!define DTO_COLOR #E1BEE7
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+package "com.careernexus.resumeservice.client" <<Rectangle>> {
+    
+    interface NLPServiceClient <<FeignClient>> CLIENT_COLOR {
+        + parseResumeText(text: String): ParsedResumeData
+        + extractSkills(text: String): List<String>
+        + extractEntities(text: String): Map<String, List<String>>
+    }
+    
+    class ParsedResumeData <<DTO>> DTO_COLOR {
+        - personalInfo: Map<String, String>
+        - skills: List<String>
+        - experiences: List<Map<String, String>>
+        - educations: List<Map<String, String>>
+        --
+        + getters/setters()
+    }
+}
+
+@enduml

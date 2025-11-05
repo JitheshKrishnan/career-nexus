@@ -1,0 +1,224 @@
+@startuml Resume Service Class Diagram
+
+!define ENTITY_COLOR #E1F5FE
+
+skinparam backgroundColor #FAFAFA
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam packageStyle rectangle
+
+' ============================================
+' PACKAGE: MODEL (ENTITIES)
+' ============================================
+package "com.careernexus.resumeservice.model" <<Rectangle>> {
+    
+    class Resume <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - userId: Long
+        - fileName: String
+        - fileUrl: String
+        - fileSizeKb: Integer
+        - fileType: String
+        - storageProvider: StorageProvider
+        - storageIdentifier: String
+        - storageMetadata: String
+        - parseStatus: ParseStatus
+        - parseErrorMessage: String
+        - qualityScore: Integer
+        - completenessScore: Integer
+        - uploadedAt: LocalDateTime
+        - parsedAt: LocalDateTime
+        - updatedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isParsed(): boolean
+        + markAsParsing(): void
+        + markAsCompleted(): void
+        + markAsFailed(error: String): void
+    }
+    
+    class ResumePersonalInfo <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - fullName: String
+        - email: String
+        - phone: String
+        - location: String
+        - linkedinUrl: String
+        - githubUrl: String
+        - portfolioUrl: String
+        - summary: String
+        --
+        + getters/setters()
+        + hasContactInfo(): boolean
+    }
+    
+    class ResumeSkill <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - skillName: String
+        - skillCategory: SkillCategory
+        - proficiencyLevel: ProficiencyLevel
+        - yearsOfExperience: BigDecimal
+        - acquiredVia: SkillAcquisition
+        - certificateUrl: String
+        - addedAt: LocalDateTime
+        --
+        + getters/setters()
+        + isFromLearningPath(): boolean
+    }
+    
+    class ResumeExperience <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - companyName: String
+        - jobTitle: String
+        - location: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - isCurrent: Boolean
+        - description: String
+        - technologiesUsed: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + calculateDuration(): Period
+        + isCurrentJob(): boolean
+    }
+    
+    class ResumeEducation <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - institutionName: String
+        - degree: String
+        - fieldOfStudy: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - grade: String
+        - description: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+    }
+    
+    class ResumeCertification <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - certificationName: String
+        - issuingOrganization: String
+        - issueDate: LocalDate
+        - expiryDate: LocalDate
+        - source: CertificationSource
+        - credentialId: String
+        - credentialUrl: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + isExpired(): boolean
+        + isFromResume(): boolean
+    }
+    
+    class ResumeProject <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - projectName: String
+        - description: String
+        - technologiesUsed: String
+        - startDate: LocalDate
+        - endDate: LocalDate
+        - projectUrl: String
+        - githubUrl: String
+        - createdAt: LocalDateTime
+        --
+        + getters/setters()
+        + hasTechnologies(): boolean
+    }
+    
+    class ResumeAnalysis <<Entity>> ENTITY_COLOR {
+        - id: Long
+        - resumeId: Long
+        - overallScore: Integer
+        - completenessScore: Integer
+        - keywordOptimizationScore: Integer
+        - formattingScore: Integer
+        - hasSummary: Boolean
+        - hasExperience: Boolean
+        - hasEducation: Boolean
+        - hasSkills: Boolean
+        - hasProjects: Boolean
+        - hasCertifications: Boolean
+        - hasContactInfo: Boolean
+        - totalSkillsCount: Integer
+        - totalExperienceYears: BigDecimal
+        - totalProjectsCount: Integer
+        - totalCertificationsCount: Integer
+        - wordCount: Integer
+        - suggestions: String
+        - analyzedAt: LocalDateTime
+        --
+        + getters/setters()
+        + calculateOverallScore(): int
+        + needsImprovement(): boolean
+    }
+    
+    enum ParseStatus {
+        UPLOADED
+        PARSING
+        COMPLETED
+        FAILED
+    }
+    
+    enum StorageProvider {
+        S3
+        CLOUDINARY
+        LOCAL
+        AZURE_BLOB
+        GCS
+    }
+    
+    enum SkillCategory {
+        TECHNICAL
+        SOFT
+        LANGUAGE
+        TOOL
+        FRAMEWORK
+        OTHER
+    }
+    
+    enum ProficiencyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+        EXPERT
+    }
+    
+    enum SkillAcquisition {
+        RESUME
+        LEARNING_PATH
+        MANUAL
+    }
+    
+    enum CertificationSource {
+        RESUME_PARSED
+        USER_MANUAL
+        PROFILE_IMPORT
+        LEARNING_PATH
+    }
+}
+
+' Entity relationships
+Resume "1" -- "0..1" ResumePersonalInfo
+Resume "1" -- "0..*" ResumeSkill
+Resume "1" -- "0..*" ResumeExperience
+Resume "1" -- "0..*" ResumeEducation
+Resume "1" -- "0..*" ResumeCertification
+Resume "1" -- "0..*" ResumeProject
+Resume "1" -- "0..1" ResumeAnalysis
+
+note right of Resume
+  Main entity with storage
+  provider abstraction
+end note
+
+@enduml
