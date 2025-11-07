@@ -196,13 +196,12 @@ package "com.careernexus.resumeservice.model" <<Rectangle>> {
     enum SkillAcquisition {
         RESUME
         LEARNING_PATH
-        MANUAL
+        PROFILE
     }
     
     enum CertificationSource {
         RESUME_PARSED
-        USER_MANUAL
-        PROFILE_IMPORT
+        PROFILE
         LEARNING_PATH
     }
 }

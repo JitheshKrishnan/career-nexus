@@ -10,6 +10,38 @@ skinparam packageStyle rectangle
 
 package "com.careernexus.resumeservice.service" <<Rectangle>> {
     
+    interface ResumeProfileService <<Service>> SERVICE_COLOR {
+        + getProfileByUserId(userId: Long): ResumeProfileDTO
+        + updateProfile(userId: Long, request: ResumeProfileUpdateRequest): ResumeProfileDTO
+        + addExperience(userId: Long, request: AddExperienceRequest): ResumeExperienceDTO
+        + addEducation(userId: Long, request: AddEducationRequest): ResumeEducationDTO
+        + deleteExperience(experienceId: Long): void
+        + deleteEducation(educationId: Long): void
+    }
+
+    class ResumeProfileServiceImpl <<ServiceImpl>> SERVICE_COLOR {
+        - resumeRepository: ResumeRepository
+        - experienceRepository: ResumeExperienceRepository
+        - educationRepository: ResumeEducationRepository
+        - skillRepository: ResumeSkillRepository
+        - profileMapper: ResumeProfileMapper
+        --
+        + getProfileByUserId(userId: Long): ResumeProfileDTO
+        + updateProfile(userId: Long, request: ResumeProfileUpdateRequest): ResumeProfileDTO
+        + addExperience(userId: Long, request: AddExperienceRequest): ResumeExperienceDTO
+        + addEducation(userId: Long, request: AddEducationRequest): ResumeEducationDTO
+        - mapToProfileDTO(userId: Long): ResumeProfileDTO
+    }
+
+    class ResumeProfileDTO {
+        - personalInfo: ResumePersonalInfo
+        - skills: List<ResumeSkillDTO>
+        - experiences: List<ResumeExperienceDTO>
+        - education: List<ResumeEducationDTO>
+        --
+        + getters/setters()
+    }
+
     interface ResumeService <<Service>> SERVICE_COLOR {
         + uploadResume(request: ResumeUploadRequest): ResumeUploadResponse
         + getResumeById(resumeId: Long): ResumeDTO
@@ -119,6 +151,7 @@ ResumeServiceImpl ..|> ResumeService
 CloudinaryStorageService ..|> StorageService
 S3StorageService ..|> StorageService
 ResumeParserServiceImpl ..|> ResumeParserService
+ResumeProfileServiceImpl ..|> ResumeProfileService
 ResumeAnalysisServiceImpl ..|> ResumeAnalysisService
 SkillServiceImpl ..|> SkillService
 
@@ -132,6 +165,12 @@ ResumeParserServiceImpl --> NLPServiceClient
 ResumeParserServiceImpl --> ResumePersonalInfoRepository
 ResumeParserServiceImpl --> ResumeSkillRepository
 ResumeParserServiceImpl --> ResumeExperienceRepository
+
+ResumeProfileServiceImpl --> ResumeRepository
+ResumeProfileServiceImpl --> ResumeExperienceRepository
+ResumeProfileServiceImpl --> ResumeEducationRepository
+ResumeProfileServiceImpl --> ResumeSkillRepository
+ResumeProfileServiceImpl ..|> SkillService
 
 ResumeAnalysisServiceImpl --> ResumeRepository
 ResumeAnalysisServiceImpl --> ResumeAnalysisRepository

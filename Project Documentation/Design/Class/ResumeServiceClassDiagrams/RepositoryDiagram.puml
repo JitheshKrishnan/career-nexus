@@ -9,6 +9,8 @@ skinparam roundcorner 5
 skinparam packageStyle rectangle
 
 package "com.careernexus.resumeservice.repository" <<Rectangle>> {
+
+    interface JpaRepository {}
     
     interface ResumeRepository <<Repository>> REPOSITORY_COLOR {
         + findByUserId(userId: Long): List<Resume>

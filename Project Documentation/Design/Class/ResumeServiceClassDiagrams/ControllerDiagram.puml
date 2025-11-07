@@ -20,6 +20,15 @@ package "com.careernexus.resumeservice.controller" <<Rectangle>> {
         + deleteResume(resumeId: Long): ResponseEntity<Void>
     }
     
+    class ResumeProfileController <<RestController>> CONTROLLER_COLOR {
+        - resumeProfileService: ResumeProfileService
+        --
+        + createProfile(resumeId: Long, request: ResumeProfileRequest): ResponseEntity<ResumeProfileDTO>
+        + getProfile(resumeId: Long): ResponseEntity<ResumeProfileDTO>
+        + updateProfile(resumeId: Long, request: ResumeProfileRequest): ResponseEntity<ResumeProfileDTO>
+        + deleteProfile(resumeId: Long): ResponseEntity<Void>
+    }
+
     class ResumeAnalysisController <<RestController>> CONTROLLER_COLOR {
         - analysisService: ResumeAnalysisService
         --
@@ -39,6 +48,7 @@ package "com.careernexus.resumeservice.controller" <<Rectangle>> {
 
 ' Controller dependencies
 ResumeController --> ResumeService
+ResumeProfileController --> ResumeProfileService
 ResumeAnalysisController --> ResumeAnalysisService
 SkillController --> SkillService
 

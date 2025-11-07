@@ -9,7 +9,7 @@ skinparam roundcorner 5
 skinparam packageStyle rectangle
 
 package "com.careernexus.resumeservice.config" <<Rectangle>> {
-    
+    '! Optional - if configuring through application.properties
     class StorageConfig <<Configuration>> CONFIG_COLOR {
         + storageService(): StorageService
         + cloudinary(): Cloudinary
